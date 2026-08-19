@@ -49,8 +49,8 @@ class FakeUdsClient:
 
 def test_main_ecu_dids_flattens_ranges():
     dids = vf.main_ecu_dids()
-    assert len(dids) == 0x200 + 0x100 + 0x02  # 770
-    assert dids[0] == 0xF000
+    assert len(dids) == 0x100 + 0x02  # 258
+    assert dids[0] == 0xF100
     assert dids[-1] == 0xFF01
     assert 0xF181 in dids and 0xF190 in dids and 0xFF00 in dids
 
@@ -63,7 +63,7 @@ def test_scan_main_ecu_records_name_and_status():
         0xF120: MessageTimeoutError("timeout"),
     }
     results = vf.scan_main_ecu(client, timeout=0.2)
-    assert len(results) == 770
+    assert len(results) == 258
     by_did = {r["did"]: r for r in results}
     assert by_did[0xF190]["status"] == "ok"
     assert by_did[0xF190]["name"] == "VIN(0xF190)"
@@ -119,7 +119,7 @@ def test_fingerprint_orchestrates():
 
     result = vf.fingerprint(main, factory, addrs=[0x7D2])
     assert result["vin"] == "JT000000000000000"
-    assert len(result["main_ecu"]) == 770
+    assert len(result["main_ecu"]) == 258
     assert sorted(result["ecus"]) == [0x7D2]
 
 
@@ -134,4 +134,4 @@ def test_fingerprint_ignores_extended_session_rejection():
         return client
 
     result = vf.fingerprint(main, factory, addrs=[0x7D2])
-    assert len(result["main_ecu"]) == 770
+    assert len(result["main_ecu"]) == 258

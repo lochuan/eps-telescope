@@ -19,8 +19,10 @@ from . import uds_probe
 
 MAIN_ECU_ADDR = 0x7E0
 
-# Main-ECU full sweep ranges (ISO-14229 identification + periodic + UDS version).
-MAIN_ECU_DID_RANGES = [(0xF000, 0xF1FF), (0xF200, 0xF2FF), (0xFF00, 0xFF01)]
+# Main-ECU sweep ranges: ISO-14229 识别信息全集 (manufacturer + standard +
+# supplier identification) + UDS version. 258 DIDs — the manufacturer-range
+# identification block, not a full sweep.
+MAIN_ECU_DID_RANGES = [(0xF100, 0xF1FF), (0xFF00, 0xFF01)]
 
 # openpilot Toyota ECU addresses on bus 0 (UDS-capable on 0xF1xx).
 OTHER_ECU_ADDRS = [
