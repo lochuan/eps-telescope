@@ -17,8 +17,8 @@ SHELLCODE_PATH = Path("shellcode/build/deep_probe.bin")
 
 def main(argv=None) -> int:
     args = cli.build_parser().parse_args(argv)
-    payload = cli.load_shellcode(SHELLCODE_PATH)
     try:
+        payload = cli.load_shellcode(SHELLCODE_PATH)
         cli.run(
             args,
             transport_factory=lambda: EcuTransport(serial=args.serial, addr=args.addr),

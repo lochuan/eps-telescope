@@ -336,6 +336,18 @@ def test_probe_main_exit_2_on_run_error(monkeypatch, tmp_path, capsys):
     assert "ERROR: boom" in capsys.readouterr().err
 
 
+def test_probe_main_exit_2_on_shellcode_read_error(monkeypatch, tmp_path, capsys):
+    def _boom(_path):
+        raise PermissionError("shellcode unreadable")
+
+    monkeypatch.setattr(cli, "load_shellcode", _boom)
+    rc = probe.main(["--depth", "uds", "--artifacts-dir", str(tmp_path)])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "ERROR: shellcode unreadable" in err
+    assert "Traceback" not in err
+
+
 # --- shellcode loading --------------------------------------------------------
 
 def test_load_shellcode_returns_bytes_for_existing_file(tmp_path):
