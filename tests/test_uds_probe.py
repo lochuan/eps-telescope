@@ -120,7 +120,7 @@ def test_nrc_names_is_exact_egg_hunter_subset():
 
 def test_did_ranges_default():
     assert uds_probe.DID_RANGES == [
-        (0xF180, 0xF19F), (0x200, 0x2FF), (0x0000, 0x00FF),
+        (0xF100, 0xF1FF), (0xFF00, 0xFF01),
     ]
 
 
@@ -236,14 +236,14 @@ def test_probe_dids_walks_blocks_and_respects_timeout(client, transport):
 def test_probe_dids_default_ranges_walk_end_inclusive(client, transport):
     results = uds_probe.probe_dids(transport)
     expected = sum(end - start + 1 for start, end in uds_probe.DID_RANGES)
-    assert expected == 0x20 + 0x100 + 0x100
+    assert expected == 0x100 + 0x02
     assert len(results) == expected
-    assert results[0]["did"] == 0xF180
-    assert results[-1]["did"] == 0x00FF
+    assert results[0]["did"] == 0xF100
+    assert results[-1]["did"] == 0xFF01
     dids = [c[1][0] for c in client.calls
             if c[0] == "read_data_by_identifier"]
-    assert dids[0] == 0xF180
-    assert dids[-1] == 0x00FF
+    assert dids[0] == 0xF100
+    assert dids[-1] == 0xFF01
 
 
 # --- probe_routines ----------------------------------------------------------
