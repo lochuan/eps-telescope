@@ -8,7 +8,7 @@ the verified fingerprints constants. No real hardware involved.
 import binascii
 
 from eps_probe import deep_probe
-from eps_probe.fingerprints import ADJUST_WORD, PATCH_FINGERPRINT
+from eps_probe.fingerprints import ADJUST_WORD, PATCH_FINGERPRINT, PATCH_POINT
 from eps_probe.payload import REQUEST_OFFSET, decrypt_envelope
 from eps_probe.protocol import StreamResult
 
@@ -59,6 +59,26 @@ class MockTransport:
 def test_verify_patch_fingerprint_match():
     out = deep_probe.verify_patch_fingerprint(_fingerprint_region(), [])
     assert out["status"] == "MATCH"
+
+
+def test_window_status_patched():
+    # The real already-patched vehicle's window: identical to the verified
+    # fingerprint except byte 32 (the patch byte) is 0x01 instead of 0xD1.
+    patched = bytearray(_FP_BYTES)
+    patched[PATCH_FINGERPRINT["patch_offset"]] = PATCH_POINT["patched"]
+    assert deep_probe._window_status(bytes(patched)) == "PATCHED"
+    assert deep_probe._window_status(_FP_BYTES) == "MATCH"
+    assert deep_probe._window_status(b"\x00" * 64) == "MISMATCH"
+    assert deep_probe._window_status(None) == "NO_DATA"
+
+
+def test_verify_patch_fingerprint_patched():
+    regions = _fingerprint_region()
+    data = bytearray(regions[0x8E6A0])
+    off = PATCH_FINGERPRINT["window_base"] - 0x8E6A0
+    data[off + PATCH_FINGERPRINT["patch_offset"]] = PATCH_POINT["patched"]
+    out = deep_probe.verify_patch_fingerprint({0x8E6A0: bytes(data)}, [])
+    assert out["status"] == "PATCHED"
 
 
 def test_verify_patch_fingerprint_mismatch():
@@ -199,6 +219,20 @@ def test_classify_target_verified_variant():
 
 def test_classify_target_already_patched():
     fp = deep_probe.verify_patch_fingerprint(_fingerprint_region(), [])
+    bi = deep_probe.verify_boot_integrity(_adjust_region(ADJUST_WORD["patched"]))
+    out = deep_probe.classify_target(fp, bi, sa_ok=True, envelope_ok=True)
+    assert out["classification"] == "already_patched"
+
+
+def test_classify_target_patched_fingerprint_is_already_patched():
+    # An already-patched vehicle: window differs only at the patch byte
+    # (0x01), egg scan finds nothing, adjust word = patched value.
+    regions = _fingerprint_region()
+    data = bytearray(regions[0x8E6A0])
+    off = PATCH_FINGERPRINT["window_base"] - 0x8E6A0
+    data[off + PATCH_FINGERPRINT["patch_offset"]] = PATCH_POINT["patched"]
+    fp = deep_probe.verify_patch_fingerprint({0x8E6A0: bytes(data)}, [])
+    assert fp["status"] == "PATCHED"
     bi = deep_probe.verify_boot_integrity(_adjust_region(ADJUST_WORD["patched"]))
     out = deep_probe.classify_target(fp, bi, sa_ok=True, envelope_ok=True)
     assert out["classification"] == "already_patched"

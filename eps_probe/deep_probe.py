@@ -32,6 +32,7 @@ from .fingerprints import (
     DCRA_MECHANISM,
     EGG_SIGNATURE,
     PATCH_FINGERPRINT,
+    PATCH_POINT,
     REGISTER_READS,
 )
 from .payload import build_envelope
@@ -56,6 +57,30 @@ _FP_BYTES = bytes.fromhex(PATCH_FINGERPRINT["bytes"])
 # (window_base 0x8E6A7 + 31 == egg 0x8E6C6), so a candidate's window starts at
 # candidate - 31.
 _EGG_OFFSET_IN_WINDOW = _FP_BYTES.index(EGG_SIGNATURE)
+_PATCH_OFFSET = PATCH_FINGERPRINT["patch_offset"]
+_PATCHED_BYTE = PATCH_POINT["patched"]
+
+
+def _window_status(window: bytes | None) -> str:
+    """Classify a 64-byte fingerprint window against the known fingerprint.
+
+    ``MATCH`` = byte-identical to the verified firmware. ``PATCHED`` =
+    identical except the patch byte itself, which equals the patched value
+    (0x01) — the signature of a vehicle already patched with the verified
+    patch. ``MISMATCH`` = anything else (a variant, or the patch byte differs
+    in an unexpected way). ``None`` input yields ``NO_DATA``.
+    """
+    if window is None:
+        return "NO_DATA"
+    if window == _FP_BYTES:
+        return "MATCH"
+    if (
+        window[:_PATCH_OFFSET] == _FP_BYTES[:_PATCH_OFFSET]
+        and window[_PATCH_OFFSET + 1:] == _FP_BYTES[_PATCH_OFFSET + 1:]
+        and window[_PATCH_OFFSET] == _PATCHED_BYTE
+    ):
+        return "PATCHED"
+    return "MISMATCH"
 
 # classify_target conclusions (small enum; Task 8 maps them to guidance text).
 CLASSIFICATION_VERIFIED = "verified_variant"
@@ -165,11 +190,13 @@ def verify_patch_fingerprint(
     the status degrades to ``NO_DATA`` (with a ``note``) instead of being
     compared.
 
-    Returns ``{"status": "MATCH|MISMATCH|NO_DATA", "candidates": [...]}``.  Each
-    egg candidate carries its own window comparison (window starts at
-    ``candidate - 31``) recorded as ``{"addr", "status"}`` — ``NO_DATA`` when no
-    uploaded region covers that window (e.g. a hit elsewhere in flash) or its
-    covering region is bad.
+    Returns ``{"status": "MATCH|PATCHED|MISMATCH|NO_DATA", "candidates": [...]}``.
+    ``PATCHED`` means the window matches the verified firmware except at the
+    patch byte, which equals its patched value — the signature of a vehicle
+    already patched with the verified patch.  Each egg candidate carries its
+    own window comparison (window starts at ``candidate - 31``) recorded as
+    ``{"addr", "status"}`` — ``NO_DATA`` when no uploaded region covers that
+    window (e.g. a hit elsewhere in flash) or its covering region is bad.
     """
     bad = set(region_bad or ())
     window = _read_range(regions, PATCH_FINGERPRINT["window_base"], 64)
@@ -178,12 +205,8 @@ def verify_patch_fingerprint(
     if cover is not None and cover in bad:
         status = "NO_DATA"
         note = f"指纹窗口区域 0x{cover:X} CRC 校验失败，数据不可信"
-    elif window is None:
-        status = "NO_DATA"
-    elif window == _FP_BYTES:
-        status = "MATCH"
     else:
-        status = "MISMATCH"
+        status = _window_status(window)
 
     candidates = []
     for candidate in egg_candidates:
@@ -195,12 +218,8 @@ def verify_patch_fingerprint(
         )
         if c_cover is not None and c_cover in bad:
             c_status = "NO_DATA"
-        elif c_window is None:
-            c_status = "NO_DATA"
-        elif c_window == _FP_BYTES:
-            c_status = "MATCH"
         else:
-            c_status = "MISMATCH"
+            c_status = _window_status(c_window)
         candidates.append({"addr": candidate, "status": c_status})
 
     out = {"status": status, "candidates": candidates}
@@ -281,8 +300,11 @@ def classify_target(
     (``stream_ok``) and a failed DCRA residue (``residue_ok`` is False) forces
     ``probe_incomplete`` regardless of fingerprint.  A MATCH is only ``verified``
     on boot state ``original``; ``patched`` -> ``already_patched``; anything
-    else (``unknown``) is ``probe_incomplete``.  A MISMATCH needs the egg scan
-    to have run (``scan_egg``) before claiming ``no_egg``.
+    else (``unknown``) is ``probe_incomplete``.  A ``PATCHED`` fingerprint (the
+    window matches except the patch byte, which equals its patched value) is
+    ``already_patched`` regardless of the adjust-word state — the fingerprint
+    itself proves the patch.  A MISMATCH needs the egg scan to have run
+    (``scan_egg``) before claiming ``no_egg``.
     """
     f_status = fingerprint.get("status")
     egg_hits = len(fingerprint.get("candidates", []))
@@ -304,6 +326,8 @@ def classify_target(
             classification = CLASSIFICATION_ALREADY_PATCHED
         else:
             classification = CLASSIFICATION_INCOMPLETE
+    elif f_status == "PATCHED":
+        classification = CLASSIFICATION_ALREADY_PATCHED
     elif f_status == "MISMATCH":
         if egg_hits:
             classification = CLASSIFICATION_EGG_VARIANT
