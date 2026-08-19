@@ -170,6 +170,30 @@ def test_probe_sessions_retries_once_on_nrc_0x78(client, transport):
     assert len(calls) == 2
 
 
+def test_probe_sessions_0x78_then_0x78_on_retry_records_nrc(client, transport):
+    client.sid_responses[0x22] = [NegativeResponse(0x78), NegativeResponse(0x78)]
+    results = uds_probe.probe_sessions(transport, [0x01])
+    by_sid = {s["sid"]: s for s in results[0]["services"]}
+    assert by_sid[0x22]["status"] == "nrc"
+    assert by_sid[0x22]["nrc"] == 0x78
+    calls = [c for c in client.calls
+             if c[0] == "_uds_request" and c[1][0] == 0x22]
+    assert len(calls) == 2
+
+
+def test_probe_sessions_0x78_then_timeout_on_retry_records_timeout(client, transport):
+    client.sid_responses[0x22] = [
+        NegativeResponse(0x78), MessageTimeoutError("timeout"),
+    ]
+    results = uds_probe.probe_sessions(transport, [0x01])
+    by_sid = {s["sid"]: s for s in results[0]["services"]}
+    assert by_sid[0x22]["status"] == "timeout"
+    assert by_sid[0x22]["nrc"] is None
+    calls = [c for c in client.calls
+             if c[0] == "_uds_request" and c[1][0] == 0x22]
+    assert len(calls) == 2
+
+
 def test_probe_sessions_skips_dead_session(client, transport):
     client.tester_present_error = MessageTimeoutError("timeout")
     results = uds_probe.probe_sessions(transport, [0x01])

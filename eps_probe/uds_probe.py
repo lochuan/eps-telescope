@@ -128,7 +128,8 @@ def _collect(uds: Any, timeout: float, fn) -> tuple[str, int | None, Any]:
             try:
                 return "ok", None, attempt()
             except Exception as retry_exc:
-                return _classify_error(retry_exc)
+                status, nrc = _classify_error(retry_exc)
+                return status, nrc, None
         return status, nrc, None
 
 
