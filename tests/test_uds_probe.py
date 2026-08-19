@@ -118,10 +118,21 @@ def test_nrc_names_is_exact_egg_hunter_subset():
     assert len(uds_probe.NRC_NAMES) == 20
 
 
-def test_did_ranges_default():
-    assert uds_probe.DID_RANGES == [
-        (0xF100, 0xF1FF), (0xFF00, 0xFF01),
+def test_eps_target_dids_default():
+    assert uds_probe.EPS_TARGET_DIDS == [
+        0xF181, 0x201, 0x202, 0x203, 0xF188, 0xF190, 0xFF00,
     ]
+
+
+def test_did_label_exact_and_range():
+    assert uds_probe.did_label(0xF181) == "ApplicationSoftwareIdentification(0xF181)"
+    assert uds_probe.did_label(0xF190) == "VIN(0xF190)"
+    assert uds_probe.did_label(0xFF00) == "UdsVersion(0xFF00)"
+    assert uds_probe.did_label(0x201) == "Write.SAKdfKey(0x0201)"
+    assert uds_probe.did_label(0xF120) == "VehicleManufacturerIdentification(0xF120)"
+    assert uds_probe.did_label(0xF7FF) == "OBDDataIdentifier(0xF7FF)"
+    assert uds_probe.did_label(0x1234) == "VehicleManufacturerSpecific(0x1234)"
+    assert uds_probe.did_label(0xCE00) == "Unknown(0xCE00)"
 
 
 # --- probe_sessions ----------------------------------------------------------
@@ -223,27 +234,25 @@ def test_probe_dids_walks_blocks_and_respects_timeout(client, transport):
         0xF181: NegativeResponse(0x31),
         0xF182: MessageTimeoutError("timeout"),
     }
-    results = uds_probe.probe_dids(transport, [(0xF180, 0xF182)])
+    results = uds_probe.probe_dids(transport, [0xF180, 0xF181, 0xF182])
     assert [r["did"] for r in results] == [0xF180, 0xF181, 0xF182]
-    assert results[0] == {"did": 0xF180, "status": "ok",
-                          "nrc": None, "data": b"\xaa\xbb"}
-    assert results[1] == {"did": 0xF181, "status": "nrc",
-                          "nrc": 0x31, "data": None}
-    assert results[2] == {"did": 0xF182, "status": "timeout",
-                          "nrc": None, "data": None}
+    assert results[0] == {"did": 0xF180, "name": "BootSoftwareIdentification(0xF180)",
+                          "status": "ok", "nrc": None, "data": b"\xaa\xbb"}
+    assert results[1] == {"did": 0xF181,
+                          "name": "ApplicationSoftwareIdentification(0xF181)",
+                          "status": "nrc", "nrc": 0x31, "data": None}
+    assert results[2] == {"did": 0xF182, "name": "ApplicationDataIdentification(0xF182)",
+                          "status": "timeout", "nrc": None, "data": None}
 
 
-def test_probe_dids_default_ranges_walk_end_inclusive(client, transport):
+def test_probe_dids_default_targets_walk(client, transport):
     results = uds_probe.probe_dids(transport)
-    expected = sum(end - start + 1 for start, end in uds_probe.DID_RANGES)
-    assert expected == 0x100 + 0x02
-    assert len(results) == expected
-    assert results[0]["did"] == 0xF100
-    assert results[-1]["did"] == 0xFF01
+    assert len(results) == len(uds_probe.EPS_TARGET_DIDS)
+    assert [r["did"] for r in results] == uds_probe.EPS_TARGET_DIDS
+    assert results[0]["name"] == "ApplicationSoftwareIdentification(0xF181)"
     dids = [c[1][0] for c in client.calls
             if c[0] == "read_data_by_identifier"]
-    assert dids[0] == 0xF100
-    assert dids[-1] == 0xFF01
+    assert dids == uds_probe.EPS_TARGET_DIDS
 
 
 # --- probe_routines ----------------------------------------------------------

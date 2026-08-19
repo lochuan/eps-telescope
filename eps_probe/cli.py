@@ -79,6 +79,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="深探时跳过 egg 签名扫描 (请求块清 bit1)",
     )
     parser.add_argument(
+        "--no-fingerprint",
+        action="store_true",
+        help="跳过车辆指纹探测 (主 ECU 全扫 + 其他 ECU 重要 DID)",
+    )
+    parser.add_argument(
         "--artifacts-dir",
         default="./artifacts",
         help="artifacts 根目录 (default ./artifacts)",
@@ -86,7 +91,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run(args, *, transport_factory, payload_bytes) -> Path:
+def run(
+    args, *, transport_factory, payload_bytes, fingerprint_runner=None
+) -> Path:
     """Compose the layered probe, write artifacts, and return the artifacts dir."""
     if _boardd_running():
         raise CliError("selfdrive pandad/boardd 正在运行 — 为避免占用总线已中止探测")
@@ -130,6 +137,15 @@ def run(args, *, transport_factory, payload_bytes) -> Path:
                     layer3 = {"error": str(exc)}
                 else:
                     layer2["envelope_ok"] = layer3["envelope_ok"]
+
+        # Vehicle fingerprint: identify the platform from the engine ECU and
+        # other ECUs (read-only). Failures degrade to a recorded error.
+        if not args.no_fingerprint:
+            runner = fingerprint_runner or _probe_vehicle_fingerprint
+            try:
+                layer1["vehicle"] = runner(transport)
+            except Exception as exc:
+                layer1["vehicle"] = {"error": str(exc)}
 
     meta = _build_meta(args, app_f181, boot_f181, identity_error)
     report_data = report.build_report(meta, layer1, layer2, layer3)
@@ -223,6 +239,36 @@ def _envelope_blocked_layer3(nrc: int | None) -> dict:
         "error": f"envelope 0x10F0 authentication rejected ({detail})",
         "classification": classification,
     }
+
+
+def _probe_vehicle_fingerprint(transport) -> dict:
+    """Identify the vehicle by probing the engine ECU and other ECUs (read-only).
+
+    Opens additional opendbc UdsClients on the same panda, sweeps the main ECU
+    identification block and reads the important DIDs on other ECUs. Never uses
+    the programming session. Returns the ``vehicle_fingerprint.fingerprint``
+    result dict.
+    """
+    from eps_probe import vehicle_fingerprint as vf
+    from eps_probe.transport import load_openpilot_bindings
+
+    bindings = load_openpilot_bindings()
+    panda = transport.panda
+    bus = 0
+
+    def uds_factory(addr):
+        return bindings.UdsClient(
+            panda, addr, addr + 8, bus, timeout=vf.FINGERPRINT_TIMEOUT
+        )
+
+    main_uds = bindings.UdsClient(
+        panda, vf.MAIN_ECU_ADDR, vf.MAIN_ECU_ADDR + 8, bus,
+        timeout=vf.FINGERPRINT_TIMEOUT,
+    )
+    try:
+        return vf.fingerprint(main_uds, uds_factory)
+    finally:
+        main_uds.close()
 
 
 def _build_meta(args, app_f181: bytes | None, boot_f181: bytes | None,

@@ -108,6 +108,10 @@ def _markdown_summary(
     parts.extend(f"- {key}: {value}" for key, value in meta.items())
     parts += ["", "## Layer 1 UDS 枚举"]
     parts.extend(_markdown_layer1(layer1))
+    vehicle = layer1.get("vehicle")
+    if vehicle:
+        parts += ["", "## 车辆指纹"]
+        parts.extend(_markdown_vehicle(vehicle))
     parts += ["", "## Layer 2 SecurityAccess"]
     parts.extend(_markdown_layer2(layer2))
     if layer3 is not None:
@@ -144,6 +148,67 @@ def _markdown_layer1(layer1: dict) -> list[str]:
             "- RequestDownload: "
             + ", ".join(f"{name}: {entry.get('status', '?')}" for name, entry in present)
         )
+    return out
+
+
+_ECU_NAME = {
+    0x7E0: "Engine",
+    0x7D2: "Hybrid",
+    0x7B0: "ABS",
+    0x7D1: "ForwardRadar",
+    0x7D0: "ForwardCamera",
+    0x780: "SRS",
+    0x7E1: "Transmission",
+    0x7C4: "HVAC",
+    0x7C0: "CombinationMeter",
+    0x713: "HVBattery",
+    0x716: "MotorGenerator",
+}
+
+
+def _fmt_did_data(data) -> str:
+    """Render DID read data: ASCII when printable, else hex.
+
+    Toyota software identifiers commonly carry a 0x01/0x02 prefix byte; it is
+    stripped before the printable-ASCII check so e.g. ``01 8965B4512000`` is
+    shown as ``8965B4512000`` rather than a hex blob.
+    """
+    if not data:
+        return "-"
+    raw = bytes(data)
+    body = raw[1:] if raw and raw[0] in (0x01, 0x02) else raw
+    if all(32 <= b < 127 or b == 0 for b in body):
+        text = body.decode("latin-1").rstrip("\x00")
+        if text:
+            return text
+    return raw.hex()
+
+
+def _markdown_vehicle(vehicle: dict) -> list[str]:
+    """Render the vehicle-fingerprint section (main-ECU sweep + other ECUs)."""
+    out = []
+    if "error" in vehicle:
+        out.append(f"- 指纹探测失败: {vehicle['error']}")
+        return out
+    vin = vehicle.get("vin")
+    if vin:
+        out.append(f"- VIN: {vin}")
+    main = vehicle.get("main_ecu") or []
+    main_ok = [r for r in main if r.get("status") == "ok"]
+    out.append(f"- 主 ECU (0x7E0): {len(main_ok)}/{len(main)} DID 读取成功")
+    for record in main_ok:
+        out.append(f"  - {record.get('name', '?')}: {_fmt_did_data(record.get('data'))}")
+    ecus = vehicle.get("ecus") or {}
+    for addr in sorted(ecus):
+        records = ecus[addr] or []
+        ok = [r for r in records if r.get("status") == "ok"]
+        label = _ECU_NAME.get(addr, f"0x{addr:03X}")
+        if not ok:
+            out.append(f"- {label} (0x{addr:03X}): 无响应")
+            continue
+        out.append(f"- {label} (0x{addr:03X}):")
+        for record in ok:
+            out.append(f"  - {record.get('name', '?')}: {_fmt_did_data(record.get('data'))}")
     return out
 
 

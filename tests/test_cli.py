@@ -307,13 +307,46 @@ def test_run_identity_failure_writes_degraded_report(patch_probes, tmp_path):
     transport = MockTransport()
     transport.fail_identity = True
     args = cli.build_parser().parse_args(["--depth", "uds", "--artifacts-dir", str(tmp_path)])
-    out = cli.run(args, transport_factory=lambda: transport, payload_bytes=None)
+    out = cli.run(args, transport_factory=lambda: transport, payload_bytes=None,
+                  fingerprint_runner=lambda t: {"main_ecu": [], "ecus": {}, "vin": None})
 
     payload = json.loads((out / "probe.json").read_bytes())
     assert payload["meta"]["app_f181"] is None
     assert payload["meta"]["boot_f181"] is None
     assert "identity_error" in payload["meta"]
-    assert payload["layer1"] == {"sessions": [], "dids": [], "routines": [], "download": {}}
+    assert payload["layer1"] == {
+        "sessions": [], "dids": [], "routines": [], "download": {},
+        "vehicle": {"main_ecu": [], "ecus": {}, "vin": None},
+    }
+
+
+def test_run_fingerprint_runs_by_default(patch_probes, tmp_path):
+    args = cli.build_parser().parse_args(["--depth", "uds", "--artifacts-dir", str(tmp_path)])
+    out = cli.run(args, transport_factory=lambda: MockTransport(), payload_bytes=None,
+                  fingerprint_runner=lambda t: {"main_ecu": [{"did": 0xF190}], "vin": "JT1X"})
+    payload = json.loads((out / "probe.json").read_bytes())
+    assert payload["layer1"]["vehicle"]["vin"] == "JT1X"
+    assert payload["layer1"]["vehicle"]["main_ecu"] == [{"did": 0xF190}]
+
+
+def test_run_no_fingerprint_skips(patch_probes, tmp_path):
+    called = []
+    args = cli.build_parser().parse_args(
+        ["--depth", "uds", "--no-fingerprint", "--artifacts-dir", str(tmp_path)]
+    )
+    out = cli.run(args, transport_factory=lambda: MockTransport(), payload_bytes=None,
+                  fingerprint_runner=lambda t: called.append(t) or {})
+    payload = json.loads((out / "probe.json").read_bytes())
+    assert "vehicle" not in payload["layer1"]
+    assert called == []
+
+
+def test_run_fingerprint_failure_records_error(patch_probes, tmp_path):
+    args = cli.build_parser().parse_args(["--depth", "uds", "--artifacts-dir", str(tmp_path)])
+    out = cli.run(args, transport_factory=lambda: MockTransport(), payload_bytes=None,
+                  fingerprint_runner=lambda t: (_ for _ in ()).throw(RuntimeError("no bus")))
+    payload = json.loads((out / "probe.json").read_bytes())
+    assert payload["layer1"]["vehicle"] == {"error": "no bus"}
 
 
 def test_run_sa_nrc_recorded_when_denied(patch_probes, tmp_path):
@@ -338,7 +371,8 @@ def test_run_writes_artifacts_atomically(patch_probes, tmp_path, capsys, monkeyp
 
     monkeypatch.setattr(cli.os, "replace", record_replace)
     args = cli.build_parser().parse_args(["--artifacts-dir", str(tmp_path)])
-    out = cli.run(args, transport_factory=lambda: MockTransport(), payload_bytes=b"\x00\x01")
+    out = cli.run(args, transport_factory=lambda: MockTransport(), payload_bytes=b"\x00\x01",
+                  fingerprint_runner=lambda t: {"main_ecu": [], "ecus": {}, "vin": None})
 
     assert out.parent == tmp_path
     assert re.fullmatch(r"\d{8}T\d{6}Z", out.name)
@@ -352,7 +386,10 @@ def test_run_writes_artifacts_atomically(patch_probes, tmp_path, capsys, monkeyp
     payload = json.loads((out / "probe.json").read_bytes())
     assert payload["meta"]["addr"] == "0x7A1"
     assert payload["meta"]["depth"] == "shellcode"
-    assert payload["layer1"] == {"sessions": [], "dids": [], "routines": [], "download": {}}
+    assert payload["layer1"] == {
+        "sessions": [], "dids": [], "routines": [], "download": {},
+        "vehicle": {"main_ecu": [], "ecus": {}, "vin": None},
+    }
     assert "## 下一步" in (out / "probe.md").read_text()
 
     stdout = capsys.readouterr().out

@@ -258,3 +258,56 @@ def test_markdown_layer3_error_only():
     md = report.build_report(_META, _LAYER1, _LAYER2, {"error": "stream timeout"})["markdown"]
     assert "错误: stream timeout" in md
     assert "指纹状态: 未知" in md
+
+
+def _layer1_with_vehicle(vehicle):
+    return dict(_LAYER1, vehicle=vehicle)
+
+
+_VEHICLE = {
+    "main_ecu": [
+        {"did": 0xF190, "name": "VIN(0xF190)", "status": "ok", "nrc": None,
+         "data": b"JT1ABCDE123456789"},
+        {"did": 0xF181, "name": "ApplicationSoftwareIdentification(0xF181)",
+         "status": "nrc", "nrc": 0x31, "data": None},
+        {"did": 0xF000, "name": "VehicleManufacturerSpecific(0xF000)",
+         "status": "nrc", "nrc": 0x31, "data": None},
+    ],
+    "ecus": {
+        0x7D2: [
+            {"did": 0xF188, "name": "VehicleManufacturerEcuSoftwareNumber(0xF188)",
+             "status": "ok", "nrc": None, "data": b"\x018965B4X000"},
+            {"did": 0xF190, "name": "VIN(0xF190)", "status": "nrc", "nrc": 0x31, "data": None},
+        ],
+        0x7B0: [
+            {"did": 0xF188, "name": "VehicleManufacturerEcuSoftwareNumber(0xF188)",
+             "status": "nrc", "nrc": 0x31, "data": None},
+        ],
+    },
+    "vin": "JT1ABCDE123456789",
+}
+
+
+def test_build_report_vehicle_markdown_and_json():
+    layer1 = _layer1_with_vehicle(_VEHICLE)
+    out = report.build_report(_META, layer1, _LAYER2)
+    md = out["markdown"]
+    assert "## 车辆指纹" in md
+    assert "- VIN: JT1ABCDE123456789" in md
+    assert "- 主 ECU (0x7E0): 1/3 DID 读取成功" in md
+    assert "  - VIN(0xF190): JT1ABCDE123456789" in md
+    assert "- Hybrid (0x7D2):" in md
+    assert "  - VehicleManufacturerEcuSoftwareNumber(0xF188): 8965B4X000" in md
+    assert "- ABS (0x7B0): 无响应" in md
+    assert out["json"]["layer1"]["vehicle"]["vin"] == "JT1ABCDE123456789"
+
+
+def test_build_report_vehicle_error():
+    layer1 = _layer1_with_vehicle({"error": "no bus"})
+    md = report.build_report(_META, layer1, _LAYER2)["markdown"]
+    assert "指纹探测失败: no bus" in md
+
+
+def test_build_report_no_vehicle_section_when_absent():
+    md = report.build_report(_META, _LAYER1, _LAYER2)["markdown"]
+    assert "## 车辆指纹" not in md

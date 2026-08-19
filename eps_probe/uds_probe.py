@@ -60,15 +60,99 @@ SID_OPENDBC = {
 SID_STUBS = {0x14, 0x19, 0x2C, 0x2F, 0x35, 0x3D, 0x83, 0x84, 0x86, 0x87}
 SID_ALL = sorted(SID_OPENDBC | SID_STUBS)
 
-# Default DID probe ranges, inclusive of both endpoints.
-# Toyota-common identification DIDs only (ISO-14229 识别块 + UDS 版本):
-#   - 0xF100-0xF1FF 识别信息全集：制造厂识别(0xF100-0xF17F) + 标准识别
-#     (0xF180-0xF19F，含 0xF181/0xF188/0xF190 VIN) + 制造厂(0xF1A0-0xF1EF)
-#     + 供应商(0xF1F0-0xF1FF)。openpilot 对丰田查 0xF188，已验证固件 0xF181。
-#   - 0xFF00-0xFF01 UDS 版本 / CAN FD 支持。
-# 舍弃：0x0000-0x00FF（ISO/SAE 保留段，非制造厂）；0x200-0x2FF（本固件
-# 0x201/0x202/0x203 为写专用 flash 流程 DID，0x22 读必 NRC，无探测价值）。
-DID_RANGES = [(0xF100, 0xF1FF), (0xFF00, 0xFF01)]
+# EPS targeted DIDs. Only the DIDs whose meaning/semantics are known from
+# firmware RE are probed — no full-range sweep on the EPS (its UDS surface is
+# minimal and already fingerprinted by the shellcode deep probe):
+#   - 0xF181  application software identification (readable, primary variant signal)
+#   - 0x201/0x202/0x203  write-only flash-routine DIDs (KDF key / IV / state
+#     machine prereq) known from RE; 0x22 read returns NRC, but presence in the
+#     table confirms the variant.
+#   - 0xF188/0xF190/0xFF00  known-absent confirmations: the validated variant
+#     returns NRC 0x31 for these; a response would reveal a different variant.
+EPS_TARGET_DIDS = [0xF181, 0x201, 0x202, 0x203, 0xF188, 0xF190, 0xFF00]
+
+# Exact DID names for the ISO-14229 identification block (opendbc
+# DATA_IDENTIFIER_TYPE), the UDS version DIDs, and the RE-known write DIDs.
+DID_NAMES: dict[int, str] = {
+    0x201: "Write.SAKdfKey",
+    0x202: "Write.SAIv",
+    0x203: "Write.StatePrereq",
+    0xF180: "BootSoftwareIdentification",
+    0xF181: "ApplicationSoftwareIdentification",
+    0xF182: "ApplicationDataIdentification",
+    0xF183: "BootSoftwareFingerprint",
+    0xF184: "ApplicationSoftwareFingerprint",
+    0xF185: "ApplicationDataFingerprint",
+    0xF186: "ActiveDiagnosticSession",
+    0xF187: "VehicleManufacturerSparePartNumber",
+    0xF188: "VehicleManufacturerEcuSoftwareNumber",
+    0xF189: "VehicleManufacturerEcuSoftwareVersionNumber",
+    0xF18A: "SystemSupplierIdentifier",
+    0xF18B: "EcuManufacturingDate",
+    0xF18C: "EcuSerialNumber",
+    0xF18D: "SupportedFunctionalUnits",
+    0xF18E: "VehicleManufacturerKitAssemblyPartNumber",
+    0xF18F: "RegulationXSoftwareIdentificationNumbers",
+    0xF190: "VIN",
+    0xF191: "VehicleManufacturerEcuHardwareNumber",
+    0xF192: "SystemSupplierEcuHardwareNumber",
+    0xF193: "SystemSupplierEcuHardwareVersionNumber",
+    0xF194: "SystemSupplierEcuSoftwareNumber",
+    0xF195: "SystemSupplierEcuSoftwareVersionNumber",
+    0xF196: "ExhaustRegulationOrTypeApprovalNumber",
+    0xF197: "SystemNameOrEngineType",
+    0xF198: "RepairShopCodeOrTesterSerialNumber",
+    0xF199: "ProgrammingDate",
+    0xF19A: "CalibrationRepairShopCodeOrEquipmentSerialNumber",
+    0xF19B: "CalibrationDate",
+    0xF19C: "CalibrationEquipmentSoftwareNumber",
+    0xF19D: "EcuInstallationDate",
+    0xF19E: "OdxFile",
+    0xF19F: "Entity",
+    0xFF00: "UdsVersion",
+    0xFF01: "ReservedForIso15765_5",
+}
+
+# Range-category labels (ISO-14229) for DIDs without a single-name meaning.
+_DID_RANGE_LABELS: list[tuple[int, int, str]] = [
+    (0x0000, 0x00FF, "ISOSAEReserved"),
+    (0x0100, 0xA5FF, "VehicleManufacturerSpecific"),
+    (0xA600, 0xA7FF, "ReservedForLegislativeUse"),
+    (0xA800, 0xACFF, "VehicleManufacturerSpecific"),
+    (0xB000, 0xB1FF, "VehicleManufacturerSpecific"),
+    (0xC000, 0xC2FF, "VehicleManufacturerSpecific"),
+    (0xCF00, 0xEFFF, "VehicleManufacturerSpecific"),
+    (0xF000, 0xF00F, "TrailerNetworkConfiguration"),
+    (0xF010, 0xF0FF, "VehicleManufacturerSpecific"),
+    (0xF100, 0xF17F, "VehicleManufacturerIdentification"),
+    (0xF1A0, 0xF1EF, "VehicleManufacturerIdentification"),
+    (0xF1F0, 0xF1FF, "SystemSupplierIdentification"),
+    (0xF200, 0xF2FF, "PeriodicDataIdentifier"),
+    (0xF300, 0xF3FF, "DynamicallyDefinedDataIdentifier"),
+    (0xF400, 0xF7FF, "OBDDataIdentifier"),
+    (0xF800, 0xF8FF, "OBDInfoTypeDataIdentifier"),
+    (0xFA00, 0xFA0F, "AirbagDeploymentDataIdentifier"),
+    (0xFA19, 0xFAFF, "SafetySystemDataIdentifier"),
+    (0xFD00, 0xFEFF, "SystemSupplierSpecific"),
+]
+
+
+def did_label(did: int) -> str:
+    """Return a display label ``Name(0xXXXX)`` for a DID.
+
+    Known DIDs get their exact ISO/RE name; unknown DIDs get the ISO-14229
+    range-category label for the block they fall in, e.g.
+    ``ApplicationSoftwareIdentification(0xF181)`` or
+    ``VehicleManufacturerSpecific(0xF120)``.
+    """
+    name = DID_NAMES.get(did)
+    if name is None:
+        name = "Unknown"
+        for start, end, label in _DID_RANGE_LABELS:
+            if start <= did <= end:
+                name = label
+                break
+    return f"{name}(0x{did:04X})"
 
 # RoutineControl subfunctions.
 ROUTINE_START = 0x01
@@ -174,22 +258,29 @@ def probe_sessions(
 
 
 def probe_dids(
-    t, did_ranges: list[tuple[int, int]] | None = None, timeout: float = 1.0
+    t, dids: list[int] | None = None, timeout: float = 1.0
 ) -> list[dict]:
-    """Walk each DID range (inclusive) reading one identifier per request.
+    """Read each targeted DID via 0x22, recording status, NRC, data and a label.
 
-    Records ``{"did", "status": "ok|nrc|timeout", "nrc", "data"}``.
+    ``dids`` is a flat list of Data Identifiers (default ``EPS_TARGET_DIDS``).
+    Records ``{"did", "name", "status", "nrc", "data"}`` where ``name`` is
+    ``did_label(did)`` (e.g. ``"ApplicationSoftwareIdentification(0xF181)"``).
     """
     uds = t.uds
-    if did_ranges is None:
-        did_ranges = DID_RANGES
+    if dids is None:
+        dids = EPS_TARGET_DIDS
     out: list[dict] = []
-    for start, end in did_ranges:
-        for did in range(start, end + 1):
-            status, nrc, data = _collect(
-                uds, timeout, lambda d=did: bytes(uds.read_data_by_identifier(d))
-            )
-            out.append({"did": did, "status": status, "nrc": nrc, "data": data})
+    for did in dids:
+        status, nrc, data = _collect(
+            uds, timeout, lambda d=did: bytes(uds.read_data_by_identifier(d))
+        )
+        out.append({
+            "did": did,
+            "name": did_label(did),
+            "status": status,
+            "nrc": nrc,
+            "data": data,
+        })
     return out
 
 
