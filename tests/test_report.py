@@ -8,13 +8,39 @@ from eps_probe.fingerprints import REGISTER_READS
 
 # Exact decision-tree guidance text per classification (Spec §8 / task brief).
 _GUIDANCE = {
-    "verified_variant": "固件与已验证变体在 patch 点逐字节一致，可按 0x88000/0xF8000 规划 patch",
-    "already_patched": "该车疑似已 patch，注意勿重复操作",
-    "egg_variant": "存在 egg 但上下文不匹配，可能为变体或 patch 点重定位，需离线对照新指纹",
-    "no_egg": "未发现 egg 签名，patch 点位不同，需完整 dump + RE 重新定位",
-    "sa_blocked": "SecurityAccess 失败(NRC 0x..)，0x27 算法或状态不同，需采集 seed/key 对逆向",
-    "envelope_blocked": "信封 0x10F0 鉴权失败，需提取该变体 PayloadBuildSecret",
-    "probe_incomplete": "深探数据不完整，需重试或降级为 UDS 级探测",
+    "verified_variant": (
+        "固件与已验证变体在 patch 点逐字节一致，可按 0x88000/0xF8000 规划 patch "
+        "(Firmware matches the verified variant at the patch point; plan the "
+        "patch against 0x88000/0xF8000)"
+    ),
+    "already_patched": (
+        "该车疑似已 patch，注意勿重复操作 "
+        "(This vehicle appears already patched; do not patch again)"
+    ),
+    "egg_variant": (
+        "存在 egg 但上下文不匹配，可能为变体或 patch 点重定位，需离线对照新指纹 "
+        "(Egg signature present but context differs; likely a variant or a "
+        "relocated patch point — compare against a new fingerprint offline)"
+    ),
+    "no_egg": (
+        "未发现 egg 签名，patch 点位不同，需完整 dump + RE 重新定位 "
+        "(No egg signature found; the patch point differs — a full dump + RE "
+        "relocation is required)"
+    ),
+    "sa_blocked": (
+        "SecurityAccess 失败，0x27 算法或状态不同，需采集 seed/key 对逆向 "
+        "(SecurityAccess failed; the 0x27 algorithm/state differs — collect "
+        "seed/key pairs to reverse-engineer)"
+    ),
+    "envelope_blocked": (
+        "信封 0x10F0 鉴权失败，需提取该变体 PayloadBuildSecret "
+        "(Envelope 0x10F0 authentication failed; extract this variant's "
+        "PayloadBuildSecret)"
+    ),
+    "probe_incomplete": (
+        "深探数据不完整，需重试或降级为 UDS 级探测 "
+        "(Deep-probe data incomplete; retry or fall back to UDS-level probing)"
+    ),
 }
 
 
@@ -134,7 +160,7 @@ def test_markdown_registers_uses_manual_names_only():
     regs["FREQR"] = 0x44       # legacy alias for FAREASELC
     md = report.markdown_registers(regs)
 
-    assert "| 寄存器名 | 地址 | 宽度 | 值 |" in md
+    assert "| 寄存器名 (Register) | 地址 (Addr) | 宽度 (Width) | 值 (Value) |" in md
     for name in ("FSTATR", "FENTRYR", "FHVE15", "FPMON", "FAREASELC"):
         assert name in md
     for alias in ("FLWL", "FLWE", "FAESTAT", "FREQR"):
@@ -143,7 +169,7 @@ def test_markdown_registers_uses_manual_names_only():
 
 def test_markdown_registers_ordered_by_register_reads():
     md = report.markdown_registers(dict(_REGISTERS))
-    rows = [line for line in md.splitlines() if line.startswith("| ") and not line.startswith("| 寄存器名") and not line.startswith("|--")]
+    rows = [line for line in md.splitlines() if line.startswith("| ") and not line.startswith("| 寄存器名 (Register)") and not line.startswith("|--")]
     present = [name for name, _addr, _width in REGISTER_READS if name in _REGISTERS]
     assert [row.split("|")[1].strip() for row in rows] == present
 
@@ -196,7 +222,7 @@ def test_build_report_markdown_sections_and_summary():
     assert "FSTATR" in md
     assert "FENTRYR" in md
     assert "FHVE15" in md
-    assert "指纹状态: MATCH" in md
+    assert "指纹状态 (fingerprint): MATCH" in md
     assert "0x0962887F" in md
     assert "original" in md
 
@@ -232,8 +258,8 @@ def test_markdown_layer3_surfaces_stream_valid_and_region_bad():
         "note": "调整字区域 0xFFDE0 CRC 校验失败，数据不可信",
     }
     md = report.build_report(_META, _LAYER1, _LAYER2, layer3)["markdown"]
-    assert "流 CRC 校验: 失败" in md
-    assert "区域 CRC 失败: 0x8E6A0, 0xFFDE0" in md
+    assert "流 CRC 校验 (stream CRC): 失败 (FAIL)" in md
+    assert "区域 CRC 失败 (region CRC failed): 0x8E6A0, 0xFFDE0" in md
     assert "指纹窗口区域 0x8E6A0 CRC" in md
     assert "调整字区域 0xFFDE0 CRC" in md
 
@@ -242,7 +268,7 @@ def test_markdown_layer3_records_egg_scan_skip():
     layer3 = _layer3()
     layer3["scan_egg"] = False
     md = report.build_report(_META, _LAYER1, _LAYER2, layer3)["markdown"]
-    assert "egg 签名扫描: 跳过 (--no-egg-scan)" in md
+    assert "egg 签名扫描 (egg scan): 跳过 (skipped) (--no-egg-scan)" in md
 
 
 def test_markdown_layer2_surfaces_envelope_nrc():
@@ -250,14 +276,14 @@ def test_markdown_layer2_surfaces_envelope_nrc():
     layer2["envelope_ok"] = False
     layer2["envelope_nrc"] = 0x31
     md = report.build_report(_META, _LAYER1, layer2, None)["markdown"]
-    assert "信封 0x10F0 鉴权: 失败" in md
+    assert "信封 0x10F0 鉴权 (envelope auth): 失败 (FAIL)" in md
     assert "信封 NRC: 0x31" in md
 
 
 def test_markdown_layer3_error_only():
     md = report.build_report(_META, _LAYER1, _LAYER2, {"error": "stream timeout"})["markdown"]
-    assert "错误: stream timeout" in md
-    assert "指纹状态: 未知" in md
+    assert "错误 (error): stream timeout" in md
+    assert "指纹状态 (fingerprint): 未知 (unknown)" in md
 
 
 def _layer1_with_vehicle(vehicle):
@@ -305,7 +331,7 @@ def test_build_report_vehicle_markdown_and_json():
 def test_build_report_vehicle_error():
     layer1 = _layer1_with_vehicle({"error": "no bus"})
     md = report.build_report(_META, layer1, _LAYER2)["markdown"]
-    assert "指纹探测失败: no bus" in md
+    assert "指纹探测失败 (fingerprint failed): no bus" in md
 
 
 def test_build_report_no_vehicle_section_when_absent():

@@ -299,8 +299,8 @@ def test_run_layer3_generic_error_degrades_to_report(patch_probes, tmp_path, mon
     assert payload["layer2"]["envelope_ok"] is False
     assert payload["guidance"] == []
     md = (out / "probe.md").read_text()
-    assert "错误: stream timeout" in md
-    assert "# RH850 EPS 探测报告" in md
+    assert "错误 (error): stream timeout" in md
+    assert "# RH850 EPS 探测报告 (RH850 EPS Probe Report)" in md
 
 
 def test_run_identity_failure_writes_degraded_report(patch_probes, tmp_path):
@@ -390,10 +390,10 @@ def test_run_writes_artifacts_atomically(patch_probes, tmp_path, capsys, monkeyp
         "sessions": [], "dids": [], "routines": [], "download": {},
         "vehicle": {"main_ecu": [], "ecus": {}, "vin": None},
     }
-    assert "## 下一步" in (out / "probe.md").read_text()
+    assert "## 下一步 (Next Steps)" in (out / "probe.md").read_text()
 
     stdout = capsys.readouterr().out
-    assert "# RH850 EPS 探测报告" in stdout
+    assert "# RH850 EPS 探测报告 (RH850 EPS Probe Report)" in stdout
 
 
 # --- boardd / pandad guard ----------------------------------------------------
