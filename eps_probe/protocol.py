@@ -8,10 +8,13 @@ Each frame is two little-endian u32 words:
 * ``word1`` = the frame payload.
 
 All data bytes (the 4 bytes of ``word1`` of every REGISTER_DATA and REGION_DATA
-frame, in stream order) accumulate into a combined CRC-32 (zlib/``binascii``
-convention, poly 0xEDB88320, init/final xor 0xFFFFFFFF). The END frame carries
-that combined CRC with bits complemented: ``word1 == crc ^ 0xFFFFFFFF``.
-``REGION_END`` similarly carries its region's CRC complemented.
+frame, in stream order) accumulate into a raw CRC-32 accumulator (poly
+0xEDB88320, init 0xFFFFFFFF, no final xor). The wire carries the STANDARD CRC
+(``binascii.crc32`` semantics, i.e. raw accumulator XOR 0xFFFFFFFF): the END
+frame's ``word1`` is ``combined_crc_raw ^ 0xFFFFFFFF`` and REGION_END's
+``word1`` likewise (this is exactly what ``deep_probe.c`` transmits). The
+collector recomputes the standard CRC from its own raw accumulators
+(``raw ^ 0xFFFFFFFF``) and compares against the wire value.
 
 ``StreamCollector`` reassembles register values by slot index and region bytes by
 ``addr + idx*4``. It does NOT know the register names: the caller (deep_probe,
@@ -32,12 +35,12 @@ FRAME_REGISTER_DATA = 0xB2   # word1 = register value; seq = REGISTER_READS slot
 FRAME_REGION_BEGIN = 0xB3    # word1 = region start address
 FRAME_REGION_LENGTH = 0xB4   # word1 = region byte count
 FRAME_REGION_DATA = 0xD0     # word1 = 4 data bytes; seq = word index within region
-FRAME_REGION_END = 0xB5      # word1 = region CRC (0xFFFFFFFF-complemented)
+FRAME_REGION_END = 0xB5      # word1 = region CRC (standard, binascii.crc32)
 FRAME_EGG_FOUND = 0xC1       # word1 = candidate address
 FRAME_EGG_SCAN_END = 0xC2    # word1 = candidate count (informational)
 FRAME_STATUS = 0xC0          # word1 = status code (informational)
 FRAME_ERROR = 0xEE           # word1 = code; seq = stage
-FRAME_END = 0xE0             # word1 = combined CRC (0xFFFFFFFF-complemented)
+FRAME_END = 0xE0             # word1 = combined CRC (standard, binascii.crc32)
 
 _CRC_POLY = 0xEDB88320
 
@@ -67,10 +70,11 @@ class StreamResult:
 # --- CRC helpers -------------------------------------------------------------
 
 def crc32_update(crc: int, byte: int) -> int:
-    """Advance a CRC-32 accumulator by one byte (poly 0xEDB88320).
+    """Advance a raw CRC-32 accumulator by one byte (poly 0xEDB88320).
 
-    Seed with ``0xFFFFFFFF``; the accumulated value (without the final xor)
-    is what the stream's complemented-CRC frames carry.
+    Seed with ``0xFFFFFFFF``. The accumulated value is the *raw* accumulator
+    without the final xor; the wire frames carry ``raw ^ 0xFFFFFFFF`` (the
+    standard ``binascii.crc32`` value).
     """
     crc = (crc ^ byte) & 0xFFFFFFFF
     for _ in range(8):
@@ -208,7 +212,7 @@ class StreamCollector:
         if ftype == FRAME_REGION_END:
             if self._region_addr is None or self._region_buf is None:
                 raise ProtocolError("REGION_END without an open region")
-            if self._region_crc != word1:
+            if (self._region_crc ^ 0xFFFFFFFF) != word1:
                 self._region_bad = True
             self._regions[self._region_addr] = self._region_buf
             self._region_addr = None
@@ -226,7 +230,7 @@ class StreamCollector:
             self._error = (seq, word1)
             return
         if ftype == FRAME_END:
-            self._end_ok = self._combined_crc == word1
+            self._end_ok = (self._combined_crc ^ 0xFFFFFFFF) == word1
             self._end_seen = True
             return
 

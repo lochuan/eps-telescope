@@ -40,13 +40,14 @@ def build_stream():
         for idx, w in enumerate(words):
             frames.append(frame(protocol.FRAME_REGION_DATA, seq=idx, word1=w))
             data_bytes += w.to_bytes(4, "little")
-        region_crc = binascii.crc32(rdata)
-        frames.append(frame(protocol.FRAME_REGION_END, word1=region_crc ^ 0xFFFFFFFF))
+        # The wire carries the STANDARD CRC (binascii.crc32 semantics), exactly
+        # what deep_probe.c transmits as `raw_crc ^ 0xFFFFFFFF`.
+        frames.append(frame(protocol.FRAME_REGION_END, word1=binascii.crc32(rdata)))
 
     frames.append(frame(protocol.FRAME_EGG_FOUND, word1=0x0008E6C7))
     frames.append(frame(protocol.FRAME_STATUS, word1=0))
     combined = binascii.crc32(data_bytes)
-    frames.append(frame(protocol.FRAME_END, word1=combined ^ 0xFFFFFFFF))
+    frames.append(frame(protocol.FRAME_END, word1=combined))
 
     expected = {
         "names": names,

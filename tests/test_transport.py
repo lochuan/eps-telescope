@@ -277,11 +277,13 @@ def test_read_identity_reads_app_then_boot_after_ladder(harness):
 
 
 def _end_word_for(data_words):
+    # Wire carries the STANDARD CRC (binascii.crc32 semantics = raw accumulator
+    # XOR 0xFFFFFFFF), matching what deep_probe.c sends on the END frame.
     acc = 0xFFFFFFFF
     for word in data_words:
         for byte in struct.pack("<I", word):
             acc = crc32_update(acc, byte)
-    return acc
+    return acc ^ 0xFFFFFFFF
 
 
 def test_collect_stream_skips_pending_and_returns_result(harness):
