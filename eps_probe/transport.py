@@ -47,6 +47,30 @@ class TransportError(RuntimeError):
     """The transport could not complete a UDS operation."""
 
 
+class EnvelopeAuthError(TransportError):
+    """The ECU rejected the 0x10F0 envelope authentication (negative response).
+
+    ``nrc`` is the negative-response code (``None`` on a timeout). Carries the
+    NRC so callers can record it instead of losing it to a generic catch.
+    """
+
+    def __init__(self, nrc: int | None = None):
+        self.nrc = nrc
+        detail = "unknown NRC" if nrc is None else f"NRC 0x{nrc:02X}"
+        super().__init__(f"envelope 0x10F0 authentication rejected ({detail})")
+
+
+def _negative_response_nrc(exc: BaseException) -> int | None:
+    """Duck-type opendbc's ``error_code``; None when it is not an NRC."""
+    nrc = getattr(exc, "error_code", None)
+    return nrc if isinstance(nrc, int) else None
+
+
+def _is_transport_timeout(exc: BaseException) -> bool:
+    """True for opendbc's ``MessageTimeoutError`` or any ``TimeoutError``."""
+    return isinstance(exc, TimeoutError) or type(exc).__name__ == "MessageTimeoutError"
+
+
 def derive_security_key(seed: bytes, secret: bytes) -> bytes:
     """Derive the Security Access key for a 16-byte seed (AES-128 ECB, double).
 
@@ -170,19 +194,26 @@ class EcuTransport:
 
     # --- Security Access -----------------------------------------------------
 
-    def security_access(self) -> bool:
-        """Request a 16-byte seed, derive and send the key; True on acceptance.
+    def security_access(self) -> tuple[bool, int | None]:
+        """Request a 16-byte seed, derive and send the key; ``(accepted, nrc)``.
 
-        ECU refusal (negative response, timeout) returns False so callers can
-        degrade gracefully; protocol anomalies raise ``TransportError``.
+        A negative response (0x35 algorithm mismatch, 0x36 attempts exhausted,
+        0x33 denied) returns ``(False, nrc)`` and a timeout returns
+        ``(False, None)`` so callers can degrade gracefully; genuine anomalies
+        (e.g. wrong seed length) raise as before.
         """
         bindings, _panda, uds = self._require_open()
         try:
             seed = bytes(uds.security_access(
                 bindings.access_request_seed, data_record=bytes(16)
             ))
-        except Exception:
-            return False
+        except Exception as exc:
+            nrc = _negative_response_nrc(exc)
+            if nrc is not None:
+                return False, nrc
+            if _is_transport_timeout(exc):
+                return False, None
+            raise
         if len(seed) != 16:
             raise TransportError(
                 f"SecurityAccess seed is not 16 bytes (got {len(seed)})"
@@ -190,9 +221,14 @@ class EcuTransport:
         key = derive_security_key(seed, SEED_KEY_SECRET)
         try:
             uds.security_access(bindings.access_send_key, security_key=key)
-        except Exception:
-            return False
-        return True
+        except Exception as exc:
+            nrc = _negative_response_nrc(exc)
+            if nrc is not None:
+                return False, nrc
+            if _is_transport_timeout(exc):
+                return False, None
+            raise
+        return True, None
 
     # --- Payload upload ------------------------------------------------------
 
@@ -237,6 +273,8 @@ class EcuTransport:
         bindings, _panda, active_uds = self._require_open()
         if uds is not active_uds:
             raise TransportError("RequestDownload used an unexpected UDS client")
+        # 0x34 payload prefix ``01 46 01 00`` is the old-UDS variant encoding
+        # from the egg-hunter reference; do not "fix" it.
         request = b"\x01\x46\x01\x00" + struct.pack("!II", RAM_ADDRESS, len(data))
         response = bytes(uds._uds_request(
             bindings.service_request_download, data=request
@@ -253,12 +291,31 @@ class EcuTransport:
             raise TransportError("envelope auth used an unexpected UDS client")
         magic = b"\x45\x01" if new_uds else b"\x45\x00"
         option = magic + struct.pack("!II", RAM_ADDRESS, ENVELOPE_LENGTH)
-        uds.routine_control(bindings.routine_start, 0x10F0, option)
+        try:
+            uds.routine_control(bindings.routine_start, 0x10F0, option)
+        except Exception as exc:
+            nrc = _negative_response_nrc(exc)
+            if nrc is not None:
+                raise EnvelopeAuthError(nrc) from exc
+            if _is_transport_timeout(exc):
+                raise EnvelopeAuthError(None) from exc
+            raise
 
-    def upload_and_trigger(self, envelope: bytes, new_uds: bool) -> None:
-        """Upload the envelope (with its own sha256 pin) and fire the trigger."""
+    def upload_and_trigger(
+        self, envelope: bytes, new_uds: bool, expected_sha256: str | None = None
+    ) -> bool:
+        """Upload the envelope and fire the raw 0xFF00 trigger.
+
+        ``expected_sha256`` is an external trusted pin for the envelope digest;
+        when None the envelope's own digest is used (internal, as before).
+        Returns True once the ECU accepted the 0x10F0 authentication (before
+        the stream runs), so callers can distinguish "auth accepted" from
+        "stream valid"; a negative response raises ``EnvelopeAuthError``.
+        """
+        if expected_sha256 is None:
+            expected_sha256 = hashlib.sha256(envelope).hexdigest()
         self.prepare_and_upload(
-            envelope, hashlib.sha256(envelope).hexdigest(), new_uds=new_uds
+            envelope, expected_sha256, new_uds=new_uds
         )
         bindings, panda, _uds = self._require_open()
         magic = b"\x45\x01" if new_uds else b"\x45\x00"
@@ -266,6 +323,7 @@ class EcuTransport:
             "!II", TRIGGER_BASE, TRIGGER_LENGTH
         )
         bindings.isotp_send(panda, frame, self.addr, bus=self.bus)
+        return True
 
     # --- Stream collection ---------------------------------------------------
 

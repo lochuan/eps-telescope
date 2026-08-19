@@ -34,6 +34,14 @@ class FakePanda:
         self.closed = True
 
 
+class NrcError(RuntimeError):
+    """opendbc NegativeResponseError-shaped exception for tests."""
+
+    def __init__(self, code):
+        self.error_code = code
+        super().__init__(f"NRC 0x{code:02X}")
+
+
 class FakeUdsClient:
     def __init__(self, panda, req_id, resp_id, bus, timeout=None,
                  response_pending_timeout=None):
@@ -45,6 +53,8 @@ class FakeUdsClient:
         self.calls = []
         self.seed = b"\x11" * 16
         self.security_access_error = None
+        self.security_key_error = None
+        self.routine_error = None
         self.read_responses = []
 
     def _record(self, method, *args, **kwargs):
@@ -67,6 +77,8 @@ class FakeUdsClient:
             raise self.security_access_error
         if data_record is not None:
             return self.seed
+        if self.security_key_error:
+            raise self.security_key_error
         return b"\x67" + (security_key or b"")
 
     def write_data_by_identifier(self, did, data):
@@ -87,6 +99,8 @@ class FakeUdsClient:
 
     def routine_control(self, start, rid, option):
         self._record("routine_control", start, rid, option)
+        if self.routine_error:
+            raise self.routine_error
         return b"\x71\x10\xf0"
 
 
@@ -162,7 +176,7 @@ def test_session_ladder_order_and_settle(harness):
 
 def test_security_access_sends_derived_key(harness):
     harness.uds.seed = bytes.fromhex("00112233445566778899aabbccddeeff")
-    assert harness.transport.security_access() is True
+    assert harness.transport.security_access() == (True, None)
     sa_calls = [c for c in harness.uds.calls if c[0] == "security_access"]
     assert [c[1][0] for c in sa_calls] == [0x01, 0x02]
     assert sa_calls[0][2] == {
@@ -174,9 +188,25 @@ def test_security_access_sends_derived_key(harness):
     assert sa_calls[1][2]["security_key"] == expected_key
 
 
-def test_security_access_returns_false_on_negative_response(harness):
-    harness.uds.security_access_error = RuntimeError("security access denied")
-    assert harness.transport.security_access() is False
+def test_security_access_returns_nrc_on_seed_negative_response(harness):
+    harness.uds.security_access_error = NrcError(0x35)
+    assert harness.transport.security_access() == (False, 0x35)
+
+
+def test_security_access_returns_nrc_on_key_send_negative_response(harness):
+    harness.uds.security_key_error = NrcError(0x36)
+    assert harness.transport.security_access() == (False, 0x36)
+
+
+def test_security_access_timeout_returns_false_no_nrc(harness):
+    harness.uds.security_access_error = TimeoutError("no response")
+    assert harness.transport.security_access() == (False, None)
+
+
+def test_security_access_re_raises_genuine_anomaly(harness):
+    harness.uds.security_access_error = RuntimeError("seed request boom")
+    with pytest.raises(RuntimeError, match="seed request boom"):
+        harness.transport.security_access()
 
 
 def test_security_access_rejects_wrong_seed_length(harness):
@@ -234,7 +264,7 @@ def test_prepare_and_upload_new_uds_routine_magic(harness):
 
 
 def test_upload_and_trigger_sends_raw_trigger_frame(harness):
-    harness.transport.upload_and_trigger(ENVELOPE, new_uds=False)
+    assert harness.transport.upload_and_trigger(ENVELOPE, new_uds=False) is True
     assert len(harness.isotp_calls) == 1
     args, kwargs = harness.isotp_calls[0]
     assert args[1] == b"\x31\x01\xff\x00\x45\x00" + struct.pack("!II", 0xE0000, 0x8000)
@@ -246,6 +276,38 @@ def test_upload_and_trigger_new_uds_magic(harness):
     harness.transport.upload_and_trigger(ENVELOPE, new_uds=True)
     args, _kwargs = harness.isotp_calls[0]
     assert args[1] == b"\x31\x01\xff\x00\x45\x01" + struct.pack("!II", 0xE0000, 0x8000)
+
+
+def test_upload_and_trigger_validates_external_pin(harness):
+    with pytest.raises(transport.TransportError, match="SHA-256"):
+        harness.transport.upload_and_trigger(ENVELOPE, new_uds=False, expected_sha256=PIN)
+    assert harness.uds.calls == []
+
+
+def test_upload_and_trigger_accepts_matching_external_pin(harness):
+    ok = harness.transport.upload_and_trigger(
+        ENVELOPE, new_uds=False, expected_sha256=hashlib.sha256(ENVELOPE).hexdigest()
+    )
+    assert ok is True
+
+
+def test_envelope_auth_nrc_raises_envelope_auth_error(harness):
+    harness.uds.routine_error = NrcError(0x31)
+    with pytest.raises(transport.EnvelopeAuthError) as excinfo:
+        harness.transport.prepare_and_upload(
+            ENVELOPE, hashlib.sha256(ENVELOPE).hexdigest(), new_uds=False
+        )
+    assert excinfo.value.nrc == 0x31
+    assert "NRC 0x31" in str(excinfo.value)
+
+
+def test_envelope_auth_timeout_raises_envelope_auth_error_no_nrc(harness):
+    harness.uds.routine_error = TimeoutError("no response")
+    with pytest.raises(transport.EnvelopeAuthError) as excinfo:
+        harness.transport.prepare_and_upload(
+            ENVELOPE, hashlib.sha256(ENVELOPE).hexdigest(), new_uds=False
+        )
+    assert excinfo.value.nrc is None
 
 
 def test_prepare_and_upload_rejects_sha256_mismatch(harness):

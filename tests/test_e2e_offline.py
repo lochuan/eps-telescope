@@ -56,7 +56,6 @@ _WINDOW_OFF = PATCH_FINGERPRINT["window_base"] - 0x88000          # 0x66A7
 _ADJUST_OFF = ADJUST_WORD["addr"] - 0xF8000                       # 0x7DEC
 _REGION_KEY = 0x8E6A0                                             # DEFAULT_REGIONS key
 _REGION_OFF = _REGION_KEY - 0x88000                               # 0x66A0 in sector
-_WINDOW_IN_REGION = PATCH_FINGERPRINT["window_base"] - _REGION_KEY  # 7
 
 
 def _open_zip():

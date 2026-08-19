@@ -99,6 +99,30 @@ def test_tampered_region_data_frame_invalidates():
     consume_all(col, tampered)
     res = col.finish()
     assert res.valid is False
+    assert res.region_bad == {0x00018000}
+
+
+def test_region_end_crc_mismatch_records_only_that_region():
+    frames, exp = build_stream()
+    # Corrupt the CRC on the FIRST region's REGION_END only; the second region
+    # stays intact so only 0x00018000 is flagged.
+    tampered = frames[:]
+    seen_region = False
+    for i, data in enumerate(tampered):
+        if data[0] == protocol.FRAME_REGION_BEGIN:
+            seen_region = True
+        if seen_region and data[0] == protocol.FRAME_REGION_END:
+            word0 = int.from_bytes(data[0:4], "little")
+            word1 = int.from_bytes(data[4:8], "little") ^ 0xFFFFFFFF
+            tampered[i] = frame(word0 & 0xFF, seq=(word0 >> 16) & 0xFFFF, word1=word1)
+            break
+
+    col = protocol.StreamCollector(register_names=exp["names"])
+    consume_all(col, tampered)
+    res = col.finish()
+    assert res.valid is False
+    assert res.region_bad == {0x00018000}
+    assert 0x00010000 not in res.region_bad
 
 
 def test_missing_end_raises_protocol_error():

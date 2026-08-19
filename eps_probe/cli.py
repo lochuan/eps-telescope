@@ -23,6 +23,7 @@ stderr and exits 2 (mirroring the FW-PATCH ``main()`` pattern).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -31,7 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import deep_probe, report, uds_probe
-from .transport import EcuTransport
+from .transport import EcuTransport, EnvelopeAuthError
 
 # Task-6 build output, relative to the repo root.
 DEFAULT_SHELLCODE = Path("shellcode/build/deep_probe.bin")
@@ -92,21 +93,45 @@ def run(args, *, transport_factory, payload_bytes) -> Path:
 
     transport = transport_factory()
     with transport:
-        app_f181, boot_f181 = transport.read_identity()
-        layer1 = _probe_layer1(transport, args.depth)
-        layer2 = {"sa_ok": False, "nrc": None, "envelope_ok": None}
+        try:
+            app_f181, boot_f181 = transport.read_identity()
+            identity_error = None
+        except Exception as exc:
+            app_f181, boot_f181 = None, None
+            identity_error = str(exc)
+        try:
+            layer1 = _probe_layer1(transport, args.depth)
+        except Exception as exc:
+            layer1 = {"error": str(exc)}
+        layer2 = {
+            "sa_ok": False,
+            "nrc": None,
+            "envelope_ok": None,
+            "envelope_nrc": None,
+        }
         layer3 = None
         if args.depth in ("sa", "shellcode"):
-            layer2["sa_ok"] = bool(transport.security_access())
+            sa_ok, sa_nrc = transport.security_access()
+            layer2["sa_ok"] = sa_ok
+            layer2["nrc"] = sa_nrc
             if (
                 args.depth == "shellcode"
                 and layer2["sa_ok"]
                 and payload_bytes is not None
             ):
-                layer3 = _probe_layer3(transport, args, payload_bytes)
-                layer2["envelope_ok"] = layer3["stream_valid"]
+                try:
+                    layer3 = _probe_layer3(transport, args, payload_bytes)
+                except EnvelopeAuthError as exc:
+                    layer2["envelope_ok"] = False
+                    layer2["envelope_nrc"] = exc.nrc
+                    layer3 = _envelope_blocked_layer3(exc.nrc)
+                except Exception as exc:
+                    layer2["envelope_ok"] = False
+                    layer3 = {"error": str(exc)}
+                else:
+                    layer2["envelope_ok"] = layer3["envelope_ok"]
 
-    meta = _build_meta(args, app_f181, boot_f181)
+    meta = _build_meta(args, app_f181, boot_f181, identity_error)
     report_data = report.build_report(meta, layer1, layer2, layer3)
     artifacts_dir = _write_artifacts(args.artifacts_dir, report_data)
     sys.stdout.write(report_data["markdown"])
@@ -114,12 +139,27 @@ def run(args, *, transport_factory, payload_bytes) -> Path:
 
 
 def load_shellcode(path=DEFAULT_SHELLCODE) -> bytes | None:
-    """Read the shellcode binary; None + stderr note when it is missing."""
+    """Read the shellcode binary; None + stderr note when it is missing.
+
+    When present, the binary's SHA-256 is verified against the ``manifest.json``
+    recorded next to it (external trusted pin); a mismatch raises ``CliError``
+    so the run exits 2 instead of uploading a tampered payload.
+    """
     source = Path(path)
     if not source.is_file():
         print(f"note: {source} 不存在 — Layer 3 深探跳过", file=sys.stderr)
         return None
-    return source.read_bytes()
+    data = source.read_bytes()
+    manifest_path = source.parent / "manifest.json"
+    if manifest_path.is_file():
+        manifest = json.loads(manifest_path.read_text())
+        expected = manifest["payload"]["deep_probe"]["sha256"]
+        actual = hashlib.sha256(data).hexdigest()
+        if actual != expected:
+            raise CliError(
+                f"shellcode SHA-256 mismatch: manifest {expected}, got {actual}"
+            )
+    return data
 
 
 # --- helpers ------------------------------------------------------------------
@@ -153,27 +193,51 @@ def _probe_layer3(transport, args, payload_bytes: bytes) -> dict:
         transport, shellcode=payload_bytes, scan_egg=not args.no_egg_scan
     )
     deep["fingerprint"] = deep_probe.verify_patch_fingerprint(
-        deep["regions"], deep["egg_candidates"]
+        deep["regions"], deep["egg_candidates"], region_bad=deep["region_bad"]
     )
-    deep["boot_integrity"] = deep_probe.verify_boot_integrity(deep["regions"])
+    deep["boot_integrity"] = deep_probe.verify_boot_integrity(
+        deep["regions"], region_bad=deep["region_bad"]
+    )
     deep["classification"] = deep_probe.classify_target(
         deep["fingerprint"],
         deep["boot_integrity"],
         sa_ok=True,
-        envelope_ok=bool(deep["stream_valid"]),
+        envelope_ok=deep["envelope_ok"],
+        stream_ok=deep["stream_valid"],
+        scan_egg=not args.no_egg_scan,
     )
     return deep
 
 
-def _build_meta(args, app_f181: bytes, boot_f181: bytes) -> dict:
+def _envelope_blocked_layer3(nrc: int | None) -> dict:
+    """Layer-3 result for a 0x10F0 rejection: envelope_blocked guidance only."""
+    classification = deep_probe.classify_target(
+        {"status": "NO_DATA", "candidates": []},
+        {"adjust_word": None, "state": "unknown"},
+        sa_ok=True,
+        envelope_ok=False,
+    )
+    detail = "unknown NRC" if nrc is None else f"NRC 0x{nrc:02X}"
     return {
+        "envelope_ok": False,
+        "error": f"envelope 0x10F0 authentication rejected ({detail})",
+        "classification": classification,
+    }
+
+
+def _build_meta(args, app_f181: bytes | None, boot_f181: bytes | None,
+                identity_error: str | None = None) -> dict:
+    meta = {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "addr": f"0x{args.addr:X}",
         "serial": args.serial,
         "depth": args.depth,
-        "app_f181": app_f181.hex(),
-        "boot_f181": boot_f181.hex(),
+        "app_f181": None if app_f181 is None else app_f181.hex(),
+        "boot_f181": None if boot_f181 is None else boot_f181.hex(),
     }
+    if identity_error is not None:
+        meta["identity_error"] = identity_error
+    return meta
 
 
 def _write_artifacts(base_dir: str, report_data: dict) -> Path:

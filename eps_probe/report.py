@@ -10,9 +10,12 @@ manual register names. ``guidance_from_classification`` maps the
 
 Layer result contracts consumed here (composed by the CLI):
 - ``layer1``: ``{"sessions": [...], "dids": [...], "routines": [...],
-  "download": {...}}`` from ``uds_probe.probe_*``.
-- ``layer2``: ``{"sa_ok": bool, "nrc": int|None, "envelope_ok": bool|None}``.
-- ``layer3``: ``run_deep_probe`` output plus ``fingerprint``
+  "download": {...}}`` from ``uds_probe.probe_*`` (or ``{"error": str}`` when
+  the layer failed as a whole).
+- ``layer2``: ``{"sa_ok": bool, "nrc": int|None, "envelope_ok": bool|None,
+  "envelope_nrc": int|None}``.
+- ``layer3``: ``run_deep_probe`` output (``stream_valid`` / ``region_bad`` /
+  ``envelope_ok`` / ``scan_egg`` surfaced in the markdown) plus ``fingerprint``
   (``verify_patch_fingerprint``), ``boot_integrity``
   (``verify_boot_integrity``) and, when the CLI ran it, ``classification``
   (``classify_target``). The ``classification`` dict is promoted to its own
@@ -153,16 +156,39 @@ def _markdown_layer2(layer2: dict) -> list[str]:
         out.append(f"- NRC: 0x{layer2['nrc']:02X}")
     if layer2.get("envelope_ok") is not None:
         out.append(f"- 信封 0x10F0 鉴权: {'通过' if layer2['envelope_ok'] else '失败'}")
+    if layer2.get("envelope_nrc") is not None:
+        out.append(f"- 信封 NRC: 0x{layer2['envelope_nrc']:02X}")
     return out
 
 
 def _markdown_layer3(layer3: dict) -> list[str]:
     out = []
+    if layer3.get("error") is not None:
+        out.append(f"- 错误: {layer3['error']}")
+    if layer3.get("envelope_ok") is not None:
+        out.append(
+            f"- 信封 0x10F0 鉴权: {'通过' if layer3['envelope_ok'] else '失败'}"
+        )
+    if "stream_valid" in layer3:
+        out.append(f"- 流 CRC 校验: {'通过' if layer3['stream_valid'] else '失败'}")
+    region_bad = layer3.get("region_bad") or []
+    if region_bad:
+        out.append(
+            "- 区域 CRC 失败: "
+            + ", ".join(f"0x{addr:X}" for addr in sorted(region_bad))
+        )
+    if layer3.get("scan_egg") is not None:
+        out.append(
+            "- egg 签名扫描: " + ("启用" if layer3["scan_egg"] else "跳过 (--no-egg-scan)")
+        )
     registers = layer3.get("registers") or {}
     if registers:
         out += ["### 寄存器快照", markdown_registers(registers)]
     fingerprint = layer3.get("fingerprint") or {}
-    out.append(f"- 指纹状态: {fingerprint.get('status', '未知')}")
+    status_line = f"- 指纹状态: {fingerprint.get('status', '未知')}"
+    if fingerprint.get("note"):
+        status_line += f" ({fingerprint['note']})"
+    out.append(status_line)
     candidates = fingerprint.get("candidates") or []
     if candidates:
         out.append(
@@ -177,6 +203,8 @@ def _markdown_layer3(layer3: dict) -> list[str]:
         out.append(f"- 调整字 0x{addr:X}: 0x{adjust:08X} ({state})")
     else:
         out.append(f"- 调整字 0x{addr:X}: 未读取 ({state})")
+    if boot.get("note"):
+        out.append(f"- {boot['note']}")
     if "residue_ok" in boot:
         out.append(f"- DCRA1 残差验证: {'通过' if boot['residue_ok'] else '失败'}")
     return out

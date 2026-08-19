@@ -69,17 +69,25 @@ CLASSIFICATION_INCOMPLETE = "probe_incomplete"
 
 # --- Helpers ------------------------------------------------------------------
 
-def _read_range(regions: dict, base: int, length: int) -> bytes | None:
-    """Return ``regions[base : base+length]`` from whichever region covers it.
+def _covering_region(regions: dict, base: int, length: int) -> int | None:
+    """Return the key of the region whose span fully contains ``[base, base+length)``.
 
     Regions are keyed by their start address; a range is served by the first
-    region whose span fully contains ``[base, base+length)``.  Returns ``None``
-    when no uploaded region covers the whole range (the caller's NO_DATA path).
+    region whose span fully contains it. Returns ``None`` when no uploaded
+    region covers the whole range (the caller's NO_DATA path).
     """
     for start, data in regions.items():
         if start <= base and base + length <= start + len(data):
-            return data[base - start:base - start + length]
+            return start
     return None
+
+
+def _read_range(regions: dict, base: int, length: int) -> bytes | None:
+    """Return ``regions[base : base+length]`` from whichever region covers it."""
+    start = _covering_region(regions, base, length)
+    if start is None:
+        return None
+    return regions[start][base - start:base - start + length]
 
 
 def _name_registers(registers: dict[str, int]) -> dict[str, int]:
@@ -105,6 +113,7 @@ def run_deep_probe(
     shellcode: bytes,
     regions: list[tuple[int, int]] | None = None,
     scan_egg: bool = True,
+    expected_envelope_sha256: str | None = None,
 ) -> dict:
     """Upload + trigger the deep probe and return its parsed stream.
 
@@ -112,8 +121,12 @@ def run_deep_probe(
     and, when ``scan_egg``, bit1 (egg scan); wraps it in an envelope (DIDs all
     zeros); uploads and triggers with ``new_uds=False``; collects and parses the
     stream into ``{"registers", "regions", "egg_candidates", "stream_valid",
-    "error"}``.  Register slots are renamed to the manual names; regions stay
-    keyed by their start address.
+    "region_bad", "envelope_ok", "scan_egg", "error"}``.  ``envelope_ok``
+    records whether the ECU accepted the 0x10F0 authentication (independent of
+    ``stream_valid``, which only covers the collected stream). Register slots
+    are renamed to the manual names; regions stay keyed by their start address.
+    ``expected_envelope_sha256`` is an optional external pin threaded to the
+    transport's upload (``None`` = envelope's own digest).
     """
     if regions is None:
         regions = DEFAULT_REGIONS
@@ -122,33 +135,50 @@ def run_deep_probe(
     envelope = build_envelope(
         shellcode, request_block, b"\x00" * 16, b"\x00" * 16
     )
-    transport.upload_and_trigger(envelope, new_uds=False)
+    auth_ok = transport.upload_and_trigger(
+        envelope, new_uds=False, expected_sha256=expected_envelope_sha256
+    )
     result: StreamResult = transport.collect_stream()
     return {
         "registers": _name_registers(dict(result.registers)),
         "regions": {addr: bytes(data) for addr, data in result.regions.items()},
         "egg_candidates": list(result.egg_candidates),
         "stream_valid": bool(result.valid),
+        "region_bad": sorted(result.region_bad),
+        "envelope_ok": bool(auth_ok),
+        "scan_egg": scan_egg,
         "error": result.error,
     }
 
 
 # --- Verification ---------------------------------------------------------------
 
-def verify_patch_fingerprint(regions: dict, egg_candidates: list[int]) -> dict:
+def verify_patch_fingerprint(
+    regions: dict, egg_candidates: list[int], region_bad: set[int] | None = None
+) -> dict:
     """Compare the patch-point fingerprint window against the known bytes.
 
     The 64-byte window is read from whichever region covers ``0x8E6A7..0x8E6E7``
     (the ``0x8E6A0`` region in ``DEFAULT_REGIONS``) and compared byte-for-byte
-    against ``PATCH_FINGERPRINT["bytes"]``.
+    against ``PATCH_FINGERPRINT["bytes"]``.  When the covering region's
+    REGION_END CRC failed (``region_bad``) the window data is untrustworthy and
+    the status degrades to ``NO_DATA`` (with a ``note``) instead of being
+    compared.
 
     Returns ``{"status": "MATCH|MISMATCH|NO_DATA", "candidates": [...]}``.  Each
     egg candidate carries its own window comparison (window starts at
     ``candidate - 31``) recorded as ``{"addr", "status"}`` — ``NO_DATA`` when no
-    uploaded region covers that window (e.g. a hit elsewhere in flash).
+    uploaded region covers that window (e.g. a hit elsewhere in flash) or its
+    covering region is bad.
     """
+    bad = set(region_bad or ())
     window = _read_range(regions, PATCH_FINGERPRINT["window_base"], 64)
-    if window is None:
+    cover = _covering_region(regions, PATCH_FINGERPRINT["window_base"], 64)
+    note = None
+    if cover is not None and cover in bad:
+        status = "NO_DATA"
+        note = f"指纹窗口区域 0x{cover:X} CRC 校验失败，数据不可信"
+    elif window is None:
         status = "NO_DATA"
     elif window == _FP_BYTES:
         status = "MATCH"
@@ -160,7 +190,12 @@ def verify_patch_fingerprint(regions: dict, egg_candidates: list[int]) -> dict:
         c_window = _read_range(
             regions, candidate - _EGG_OFFSET_IN_WINDOW, 64
         )
-        if c_window is None:
+        c_cover = _covering_region(
+            regions, candidate - _EGG_OFFSET_IN_WINDOW, 64
+        )
+        if c_cover is not None and c_cover in bad:
+            c_status = "NO_DATA"
+        elif c_window is None:
             c_status = "NO_DATA"
         elif c_window == _FP_BYTES:
             c_status = "MATCH"
@@ -168,23 +203,38 @@ def verify_patch_fingerprint(regions: dict, egg_candidates: list[int]) -> dict:
             c_status = "MISMATCH"
         candidates.append({"addr": candidate, "status": c_status})
 
-    return {"status": status, "candidates": candidates}
+    out = {"status": status, "candidates": candidates}
+    if note is not None:
+        out["note"] = note
+    return out
 
 
-def verify_boot_integrity(regions: dict) -> dict:
+def verify_boot_integrity(
+    regions: dict, region_bad: set[int] | None = None
+) -> dict:
     """Classify the boot-integrity evidence available in ``regions``.
 
     Always classifies the CRC adjust word at ``0xFFDEC`` (region key ``0xFFDE0``,
     offset 12, little-endian): ``"original"`` == ``ADJUST_WORD["original"]``,
     ``"patched"`` == ``ADJUST_WORD["patched"]``, anything else (or missing
-    region) ``"unknown"``.
+    region) ``"unknown"``.  When the adjust-word region's REGION_END CRC failed
+    (``region_bad``) the state stays ``"unknown"`` with a ``note`` — the word is
+    reported but not trusted.
 
     When a single region covers the full DCRA1 range ``[0x18000, 0xFFDF0)``,
     additionally recomputes the software CRC over that range and adds
-    ``residue_ok`` (True when it equals ``DCRA_MECHANISM["residue"]``).
+    ``residue_ok`` (True when it equals ``DCRA_MECHANISM["residue"]``; False
+    with a ``note`` when that region itself is bad).
     """
+    bad = set(region_bad or ())
     raw = _read_range(regions, ADJUST_WORD["addr"], 4)
-    if raw is None:
+    cover = _covering_region(regions, ADJUST_WORD["addr"], 4)
+    note = None
+    if cover is not None and cover in bad:
+        adjust_word = int.from_bytes(raw, "little") if raw is not None else None
+        state = "unknown"
+        note = f"调整字区域 0x{cover:X} CRC 校验失败，数据不可信"
+    elif raw is None:
         adjust_word: int | None = None
         state = "unknown"
     else:
@@ -196,45 +246,71 @@ def verify_boot_integrity(regions: dict) -> dict:
         )
 
     out = {"adjust_word": adjust_word, "state": state}
+    if note is not None:
+        out["note"] = note
 
     start = DCRA_MECHANISM["range_start"]
     end = DCRA_MECHANISM["range_end"]
     full = _read_range(regions, start, end - start)
     if full is not None:
-        out["residue_ok"] = crc32_stream([full]) == DCRA_MECHANISM["residue"]
+        full_cover = _covering_region(regions, start, end - start)
+        if full_cover is not None and full_cover in bad:
+            out["residue_ok"] = False
+            out["note"] = f"全范围区域 0x{full_cover:X} CRC 校验失败，残差不可信"
+        else:
+            out["residue_ok"] = crc32_stream([full]) == DCRA_MECHANISM["residue"]
     return out
 
 
 # --- Classification ---------------------------------------------------------------
 
 def classify_target(
-    fingerprint: dict, boot_integrity: dict, sa_ok: bool, envelope_ok: bool
+    fingerprint: dict,
+    boot_integrity: dict,
+    sa_ok: bool,
+    envelope_ok: bool,
+    *,
+    stream_ok: bool = True,
+    scan_egg: bool = True,
 ) -> dict:
     """Fold Layer-2 gates + Layer-3 evidence into one raw guidance conclusion.
 
     Returns a dict with a ``classification`` key from the small enum above plus
     the supporting evidence Task 8 uses to render guidance text.  Layer-2 gates
-    take precedence (they abort the deep probe), then fingerprint MATCH /
-    MISMATCH / NO_DATA drives the boot-integrity and egg branches.
+    take precedence (they abort the deep probe); then the stream must be valid
+    (``stream_ok``) and a failed DCRA residue (``residue_ok`` is False) forces
+    ``probe_incomplete`` regardless of fingerprint.  A MATCH is only ``verified``
+    on boot state ``original``; ``patched`` -> ``already_patched``; anything
+    else (``unknown``) is ``probe_incomplete``.  A MISMATCH needs the egg scan
+    to have run (``scan_egg``) before claiming ``no_egg``.
     """
     f_status = fingerprint.get("status")
     egg_hits = len(fingerprint.get("candidates", []))
     b_state = boot_integrity.get("state", "unknown")
+    residue_ok = boot_integrity.get("residue_ok")
 
     if not sa_ok:
         classification = CLASSIFICATION_SA_BLOCKED
     elif not envelope_ok:
         classification = CLASSIFICATION_ENVELOPE_BLOCKED
+    elif not stream_ok:
+        classification = CLASSIFICATION_INCOMPLETE
+    elif residue_ok is False:
+        classification = CLASSIFICATION_INCOMPLETE
     elif f_status == "MATCH":
-        classification = (
-            CLASSIFICATION_ALREADY_PATCHED if b_state == "patched"
-            else CLASSIFICATION_VERIFIED
-        )
+        if b_state == "original":
+            classification = CLASSIFICATION_VERIFIED
+        elif b_state == "patched":
+            classification = CLASSIFICATION_ALREADY_PATCHED
+        else:
+            classification = CLASSIFICATION_INCOMPLETE
     elif f_status == "MISMATCH":
-        classification = (
-            CLASSIFICATION_EGG_VARIANT if egg_hits
-            else CLASSIFICATION_NO_EGG
-        )
+        if egg_hits:
+            classification = CLASSIFICATION_EGG_VARIANT
+        elif scan_egg:
+            classification = CLASSIFICATION_NO_EGG
+        else:
+            classification = CLASSIFICATION_INCOMPLETE
     else:
         classification = CLASSIFICATION_INCOMPLETE
 
@@ -245,4 +321,6 @@ def classify_target(
         "egg_hits": egg_hits,
         "sa_ok": bool(sa_ok),
         "envelope_ok": bool(envelope_ok),
+        "stream_ok": bool(stream_ok),
+        "residue_ok": residue_ok,
     }

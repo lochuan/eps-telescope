@@ -5,29 +5,40 @@ Layer-1/Layer-3 probe functions, and exercise ``probe.main`` for the wiring and
 exit-code contract. No real hardware involved.
 """
 
+import hashlib
 import json
 import re
 
 import pytest
 
 from eps_probe import cli
-from eps_probe.transport import EcuTransport
+from eps_probe.transport import EcuTransport, EnvelopeAuthError
 from eps_probe.uds_probe import (
     SESSION_DEFAULT,
     SESSION_EXTENDED,
     SESSION_PROGRAMMING,
 )
 
+import eps_probe.deep_probe as deep_probe_module
+
 import probe
+
+# Captured at import time: the ``patch_probes`` fixture monkeypatches
+# ``cli.deep_probe.classify_target`` in place, so re-reading the attribute
+# later would return the mock. Keep the real function object for tests that
+# must exercise the real envelope-blocked classification.
+_REAL_CLASSIFY_TARGET = deep_probe_module.classify_target
 
 
 class MockTransport:
     """Recording transport: identity + SecurityAccess, no UDS client hardware."""
 
-    def __init__(self, app=b"\xAA\x01", boot=b"\xBB\x02", sa_ok=True):
+    def __init__(self, app=b"\xAA\x01", boot=b"\xBB\x02", sa_ok=True, sa_nrc=None):
         self.app = app
         self.boot = boot
         self.sa_ok = sa_ok
+        self.sa_nrc = sa_nrc
+        self.fail_identity = False
         self.calls = []
 
     def __enter__(self):
@@ -39,11 +50,13 @@ class MockTransport:
 
     def read_identity(self):
         self.calls.append("identity")
+        if self.fail_identity:
+            raise RuntimeError("F181 read timeout")
         return self.app, self.boot
 
     def security_access(self):
         self.calls.append("sa")
-        return self.sa_ok
+        return self.sa_ok, self.sa_nrc
 
 
 @pytest.fixture
@@ -70,20 +83,23 @@ def patch_probes(monkeypatch):
             "regions": {0x8E6A0: b"\x00" * 0x100},
             "egg_candidates": [],
             "stream_valid": True,
+            "region_bad": [],
+            "envelope_ok": True,
+            "scan_egg": scan_egg,
             "error": None,
             "shellcode": shellcode,
-            "scan_egg": scan_egg,
         }
         return dict(recorded["deep"])
 
-    def _verify_fingerprint(regions, egg_candidates):
+    def _verify_fingerprint(regions, egg_candidates, region_bad=None):
         return {"status": "MATCH", "candidates": []}
 
-    def _verify_boot(regions):
+    def _verify_boot(regions, region_bad=None):
         return {"adjust_word": 0x01, "state": "original"}
 
-    def _classify(fingerprint, boot_integrity, sa_ok, envelope_ok):
-        recorded["classify"] = (sa_ok, envelope_ok)
+    def _classify(fingerprint, boot_integrity, sa_ok, envelope_ok, *,
+                  stream_ok=True, scan_egg=True):
+        recorded["classify"] = (sa_ok, envelope_ok, stream_ok, scan_egg)
         return {
             "classification": "verified_variant",
             "fingerprint": "MATCH",
@@ -91,6 +107,7 @@ def patch_probes(monkeypatch):
             "egg_hits": 0,
             "sa_ok": sa_ok,
             "envelope_ok": envelope_ok,
+            "stream_ok": stream_ok,
         }
 
     monkeypatch.setattr(cli, "_boardd_running", lambda: False)
@@ -159,7 +176,9 @@ def test_run_depth_uds_never_calls_security_access(patch_probes, tmp_path):
     assert transport.calls[:2] == ["open", "identity"]
     assert patch_probes["sessions"] == [SESSION_DEFAULT]
     payload = json.loads((out / "probe.json").read_bytes())
-    assert payload["layer2"] == {"sa_ok": False, "nrc": None, "envelope_ok": None}
+    assert payload["layer2"] == {
+        "sa_ok": False, "nrc": None, "envelope_ok": None, "envelope_nrc": None,
+    }
     assert payload["layer3"] is None
 
 
@@ -187,7 +206,7 @@ def test_run_depth_shellcode_probes_all_sessions(patch_probes, tmp_path):
 
 
 def test_run_sa_failure_degrades_to_uds_report(patch_probes, tmp_path):
-    transport = MockTransport(sa_ok=False)
+    transport = MockTransport(sa_ok=False, sa_nrc=0x35)
     args = cli.build_parser().parse_args(
         ["--depth", "sa", "--artifacts-dir", str(tmp_path)]
     )
@@ -195,10 +214,12 @@ def test_run_sa_failure_degrades_to_uds_report(patch_probes, tmp_path):
 
     payload = json.loads((out / "probe.json").read_bytes())
     assert payload["layer2"]["sa_ok"] is False
+    assert payload["layer2"]["nrc"] == 0x35
     assert payload["layer3"] is None
     assert patch_probes["deep"] is None
     md = (out / "probe.md").read_text()
     assert "SecurityAccess: 失败" in md
+    assert "NRC: 0x35" in md
     assert "## Layer 3 深探" not in md
 
 
@@ -219,7 +240,7 @@ def test_run_shellcode_runs_deep_probe_and_classifies(patch_probes, tmp_path):
     assert patch_probes["deep"] is not None
     assert patch_probes["deep"]["shellcode"] == b"\x00\x01"
     assert patch_probes["deep"]["scan_egg"] is True
-    assert patch_probes["classify"] == (True, True)
+    assert patch_probes["classify"] == (True, True, True, True)
     payload = json.loads((out / "probe.json").read_bytes())
     assert payload["layer3"]["classification"]["classification"] == "verified_variant"
     assert payload["layer2"]["envelope_ok"] is True
@@ -242,6 +263,67 @@ def test_run_missing_shellcode_skips_layer3(patch_probes, tmp_path):
     assert payload["layer3"] is None
     assert patch_probes["deep"] is None
     assert "## Layer 3 深探" not in (out / "probe.md").read_text()
+
+
+# --- run: layer 3 degradation -------------------------------------------------
+
+def test_run_envelope_auth_error_degrades_to_report(patch_probes, tmp_path, monkeypatch):
+    def _raise(*args, **kwargs):
+        raise EnvelopeAuthError(0x31)
+
+    monkeypatch.setattr(cli.deep_probe, "run_deep_probe", _raise)
+    monkeypatch.setattr(cli.deep_probe, "classify_target", _REAL_CLASSIFY_TARGET)
+    args = cli.build_parser().parse_args(["--artifacts-dir", str(tmp_path)])
+    out = cli.run(args, transport_factory=lambda: MockTransport(), payload_bytes=b"\x00\x01")
+
+    payload = json.loads((out / "probe.json").read_bytes())
+    assert payload["layer2"]["envelope_ok"] is False
+    assert payload["layer2"]["envelope_nrc"] == 0x31
+    assert payload["layer3"]["classification"]["classification"] == "envelope_blocked"
+    assert "PayloadBuildSecret" in payload["guidance"][0]
+    md = (out / "probe.md").read_text()
+    assert "信封 NRC: 0x31" in md
+    assert "指纹状态" in md
+
+
+def test_run_layer3_generic_error_degrades_to_report(patch_probes, tmp_path, monkeypatch):
+    def _raise(*args, **kwargs):
+        raise RuntimeError("stream timeout")
+
+    monkeypatch.setattr(cli.deep_probe, "run_deep_probe", _raise)
+    args = cli.build_parser().parse_args(["--artifacts-dir", str(tmp_path)])
+    out = cli.run(args, transport_factory=lambda: MockTransport(), payload_bytes=b"\x00\x01")
+
+    payload = json.loads((out / "probe.json").read_bytes())
+    assert payload["layer3"] == {"error": "stream timeout"}
+    assert payload["layer2"]["envelope_ok"] is False
+    assert payload["guidance"] == []
+    md = (out / "probe.md").read_text()
+    assert "错误: stream timeout" in md
+    assert "# RH850 EPS 探测报告" in md
+
+
+def test_run_identity_failure_writes_degraded_report(patch_probes, tmp_path):
+    transport = MockTransport()
+    transport.fail_identity = True
+    args = cli.build_parser().parse_args(["--depth", "uds", "--artifacts-dir", str(tmp_path)])
+    out = cli.run(args, transport_factory=lambda: transport, payload_bytes=None)
+
+    payload = json.loads((out / "probe.json").read_bytes())
+    assert payload["meta"]["app_f181"] is None
+    assert payload["meta"]["boot_f181"] is None
+    assert "identity_error" in payload["meta"]
+    assert payload["layer1"] == {"sessions": [], "dids": [], "routines": [], "download": {}}
+
+
+def test_run_sa_nrc_recorded_when_denied(patch_probes, tmp_path):
+    transport = MockTransport(sa_ok=False, sa_nrc=0x36)
+    args = cli.build_parser().parse_args(["--depth", "sa", "--artifacts-dir", str(tmp_path)])
+    out = cli.run(args, transport_factory=lambda: transport, payload_bytes=None)
+    payload = json.loads((out / "probe.json").read_bytes())
+    assert payload["layer2"]["sa_ok"] is False
+    assert payload["layer2"]["nrc"] == 0x36
+    assert payload["layer3"] is None
 
 
 # --- artifacts ----------------------------------------------------------------
@@ -359,3 +441,33 @@ def test_load_shellcode_returns_bytes_for_existing_file(tmp_path):
 def test_load_shellcode_none_with_note_for_missing_file(tmp_path, capsys):
     assert cli.load_shellcode(tmp_path / "nope.bin") is None
     assert "nope.bin" in capsys.readouterr().err
+
+
+def test_load_shellcode_verifies_manifest_sha256(tmp_path):
+    data = b"\xDE\xAD\xBE\xEF"
+    source = tmp_path / "deep_probe.bin"
+    source.write_bytes(data)
+    (tmp_path / "manifest.json").write_text(json.dumps({
+        "payload": {"deep_probe": {"size": 4, "sha256": hashlib.sha256(data).hexdigest()}}
+    }))
+    assert cli.load_shellcode(source) == data
+
+
+def test_load_shellcode_raises_on_manifest_mismatch(tmp_path):
+    source = tmp_path / "deep_probe.bin"
+    source.write_bytes(b"\xDE\xAD\xBE\xEF")
+    (tmp_path / "manifest.json").write_text(json.dumps({
+        "payload": {"deep_probe": {"size": 4, "sha256": "0" * 64}}
+    }))
+    with pytest.raises(cli.CliError, match="SHA-256"):
+        cli.load_shellcode(source)
+
+
+def test_probe_main_exit_2_on_shellcode_manifest_mismatch(monkeypatch, tmp_path, capsys):
+    def _boom(_path):
+        raise cli.CliError("shellcode SHA-256 mismatch: manifest 0, got abc")
+
+    monkeypatch.setattr(cli, "load_shellcode", _boom)
+    rc = probe.main(["--depth", "shellcode", "--artifacts-dir", str(tmp_path)])
+    assert rc == 2
+    assert "ERROR: shellcode SHA-256 mismatch" in capsys.readouterr().err

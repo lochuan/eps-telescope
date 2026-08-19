@@ -2,6 +2,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# uv lockfile is an untracked ephemeral artifact here (adjudicated review).
+uv.lock
+.DS_Store
+
 # Real vehicle sector images are read from the artifacts zip in tests;
 # never commit them.
 tests/data/*.bin

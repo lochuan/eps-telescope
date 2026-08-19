@@ -216,3 +216,45 @@ def test_build_report_layer3_without_classification():
     out = report.build_report(_META, _LAYER1, _LAYER2, _layer3())
     assert "classification" not in out["json"]
     assert out["guidance"] == []
+
+
+def test_markdown_layer3_surfaces_stream_valid_and_region_bad():
+    layer3 = _layer3("verified_variant")
+    layer3["stream_valid"] = False
+    layer3["region_bad"] = [0x8E6A0, 0xFFDE0]
+    layer3["fingerprint"] = {
+        "status": "NO_DATA",
+        "note": "指纹窗口区域 0x8E6A0 CRC 校验失败，数据不可信",
+        "candidates": [],
+    }
+    layer3["boot_integrity"] = {
+        "adjust_word": 0x0962887F, "state": "unknown",
+        "note": "调整字区域 0xFFDE0 CRC 校验失败，数据不可信",
+    }
+    md = report.build_report(_META, _LAYER1, _LAYER2, layer3)["markdown"]
+    assert "流 CRC 校验: 失败" in md
+    assert "区域 CRC 失败: 0x8E6A0, 0xFFDE0" in md
+    assert "指纹窗口区域 0x8E6A0 CRC" in md
+    assert "调整字区域 0xFFDE0 CRC" in md
+
+
+def test_markdown_layer3_records_egg_scan_skip():
+    layer3 = _layer3()
+    layer3["scan_egg"] = False
+    md = report.build_report(_META, _LAYER1, _LAYER2, layer3)["markdown"]
+    assert "egg 签名扫描: 跳过 (--no-egg-scan)" in md
+
+
+def test_markdown_layer2_surfaces_envelope_nrc():
+    layer2 = dict(_LAYER2)
+    layer2["envelope_ok"] = False
+    layer2["envelope_nrc"] = 0x31
+    md = report.build_report(_META, _LAYER1, layer2, None)["markdown"]
+    assert "信封 0x10F0 鉴权: 失败" in md
+    assert "信封 NRC: 0x31" in md
+
+
+def test_markdown_layer3_error_only():
+    md = report.build_report(_META, _LAYER1, _LAYER2, {"error": "stream timeout"})["markdown"]
+    assert "错误: stream timeout" in md
+    assert "指纹状态: 未知" in md

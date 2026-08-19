@@ -46,8 +46,9 @@ class MockTransport:
         self.result = result
         self.uploads = []
 
-    def upload_and_trigger(self, envelope, new_uds):
-        self.uploads.append((envelope, new_uds))
+    def upload_and_trigger(self, envelope, new_uds, expected_sha256=None):
+        self.uploads.append((envelope, new_uds, expected_sha256))
+        return True
 
     def collect_stream(self, timeout=60.0):
         return self.result
@@ -71,6 +72,22 @@ def test_verify_patch_fingerprint_mismatch():
 def test_verify_patch_fingerprint_no_data():
     out = deep_probe.verify_patch_fingerprint({}, [])
     assert out["status"] == "NO_DATA"
+
+
+def test_verify_patch_fingerprint_bad_region_is_no_data():
+    out = deep_probe.verify_patch_fingerprint(
+        _fingerprint_region(), [], region_bad={0x8E6A0}
+    )
+    assert out["status"] == "NO_DATA"
+    assert "CRC" in out["note"]
+
+
+def test_verify_patch_fingerprint_unrelated_bad_region_ignored():
+    out = deep_probe.verify_patch_fingerprint(
+        _fingerprint_region(), [], region_bad={0xFFDE0}
+    )
+    assert out["status"] == "MATCH"
+    assert "note" not in out
 
 
 def test_verify_patch_fingerprint_candidate_context_match():
@@ -125,6 +142,24 @@ def test_verify_boot_integrity_missing_adjust_region():
     assert out["adjust_word"] is None
 
 
+def test_verify_boot_integrity_bad_adjust_region_stays_unknown():
+    out = deep_probe.verify_boot_integrity(
+        _adjust_region(ADJUST_WORD["original"]), region_bad={0xFFDE0}
+    )
+    assert out["state"] == "unknown"
+    assert out["adjust_word"] == ADJUST_WORD["original"]
+    assert "CRC" in out["note"]
+
+
+def test_verify_boot_integrity_bad_full_range_residue_false():
+    out = deep_probe.verify_boot_integrity(
+        _full_range_region(), region_bad={_FULL_RANGE_START}
+    )
+    assert out["state"] == "unknown"
+    assert out["residue_ok"] is False
+    assert "CRC" in out["note"]
+
+
 def test_verify_boot_integrity_full_range_residue_ok():
     out = deep_probe.verify_boot_integrity(_full_range_region())
     assert out["residue_ok"] is True
@@ -169,6 +204,40 @@ def test_classify_target_already_patched():
     assert out["classification"] == "already_patched"
 
 
+def test_classify_target_match_with_unknown_boot_state_is_incomplete():
+    fp = deep_probe.verify_patch_fingerprint(_fingerprint_region(), [])
+    bi = deep_probe.verify_boot_integrity(_adjust_region(0x1234ABCD))
+    out = deep_probe.classify_target(fp, bi, sa_ok=True, envelope_ok=True)
+    assert out["classification"] == "probe_incomplete"
+
+
+def test_classify_target_residue_false_forces_incomplete():
+    fp = deep_probe.verify_patch_fingerprint(_fingerprint_region(), [])
+    bi = deep_probe.verify_boot_integrity({0x18000: bytes(0xFFDF0 - 0x18000)})
+    assert bi["residue_ok"] is False
+    out = deep_probe.classify_target(fp, bi, sa_ok=True, envelope_ok=True)
+    assert out["classification"] == "probe_incomplete"
+
+
+def test_classify_target_bad_stream_is_incomplete():
+    fp = deep_probe.verify_patch_fingerprint(_fingerprint_region(), [])
+    bi = deep_probe.verify_boot_integrity(_adjust_region(ADJUST_WORD["original"]))
+    out = deep_probe.classify_target(
+        fp, bi, sa_ok=True, envelope_ok=True, stream_ok=False
+    )
+    assert out["classification"] == "probe_incomplete"
+
+
+def test_classify_target_mismatch_without_egg_scan_is_incomplete():
+    regions = {0x8E6A0: bytes(0x100)}
+    fp = deep_probe.verify_patch_fingerprint(regions, [])
+    bi = deep_probe.verify_boot_integrity(_adjust_region(0x1234ABCD))
+    out = deep_probe.classify_target(
+        fp, bi, sa_ok=True, envelope_ok=True, scan_egg=False
+    )
+    assert out["classification"] == "probe_incomplete"
+
+
 def test_classify_target_egg_variant():
     regions = {0x8E6A0: bytes(0x100)}
     fp = deep_probe.verify_patch_fingerprint(regions, [0x8E6C6])
@@ -206,8 +275,9 @@ def test_run_deep_probe_flags_and_call_chain():
     out = deep_probe.run_deep_probe(transport, shellcode=b"\x00\x01")
 
     assert len(transport.uploads) == 1
-    envelope, new_uds = transport.uploads[0]
+    envelope, new_uds, expected_sha256 = transport.uploads[0]
     assert new_uds is False
+    assert expected_sha256 is None
     assert len(envelope) == 0x1000
 
     plain = decrypt_envelope(envelope)
@@ -221,18 +291,33 @@ def test_run_deep_probe_flags_and_call_chain():
     assert out["regions"] == {0x8E6A0: bytes(0x100)}
     assert out["egg_candidates"] == [0x8E6C6]
     assert out["stream_valid"] is True
+    assert out["region_bad"] == []
+    assert out["envelope_ok"] is True
+    assert out["scan_egg"] is True
     assert out["error"] is None
+
+
+def test_run_deep_probe_threads_external_envelope_pin():
+    result = StreamResult(registers={}, regions={}, valid=True)
+    transport = MockTransport(result)
+    deep_probe.run_deep_probe(
+        transport, shellcode=b"\x00\x01",
+        expected_envelope_sha256="0" * 64,
+    )
+    _envelope, _new_uds, expected_sha256 = transport.uploads[0]
+    assert expected_sha256 == "0" * 64
 
 
 def test_run_deep_probe_no_egg_scan_flag():
     result = StreamResult(registers={}, regions={}, valid=False)
     transport = MockTransport(result)
-    deep_probe.run_deep_probe(
+    out = deep_probe.run_deep_probe(
         transport, shellcode=b"\x00\x01", scan_egg=False
     )
-    envelope, _new_uds = transport.uploads[0]
+    envelope, _new_uds, _pin = transport.uploads[0]
     block = decrypt_envelope(envelope)[REQUEST_OFFSET:]
     assert block[4] == 0x01  # registers only
+    assert out["scan_egg"] is False
 
 
 def test_run_deep_probe_parses_stream_error():

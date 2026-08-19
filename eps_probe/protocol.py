@@ -55,6 +55,9 @@ class StreamResult:
 
     ``valid`` is True only when the END CRC matches the accumulated data bytes,
     no region CRC mismatch was seen, and no ERROR frame was received.
+    ``region_bad`` holds the start address of every region whose REGION_END CRC
+    failed, so consumers can refuse to trust that region's bytes without
+    discarding the whole stream.
     """
 
     registers: dict[str, int] = field(default_factory=dict)
@@ -65,6 +68,7 @@ class StreamResult:
     combined_crc: int = 0
     valid: bool = False
     error: tuple[int, int] | None = None
+    region_bad: set[int] = field(default_factory=set)
 
 
 # --- CRC helpers -------------------------------------------------------------
@@ -139,7 +143,7 @@ class StreamCollector:
         self._started = False
         self._end_seen = False
         self._end_ok = True
-        self._region_bad = False
+        self._region_bad: set[int] = set()
         self._error: tuple[int, int] | None = None
 
         self._reg_values: dict[int, int] = {}
@@ -213,7 +217,7 @@ class StreamCollector:
             if self._region_addr is None or self._region_buf is None:
                 raise ProtocolError("REGION_END without an open region")
             if (self._region_crc ^ 0xFFFFFFFF) != word1:
-                self._region_bad = True
+                self._region_bad.add(self._region_addr)
             self._regions[self._region_addr] = self._region_buf
             self._region_addr = None
             self._region_buf = None
@@ -260,7 +264,7 @@ class StreamCollector:
     def _reset(self) -> None:
         self._end_seen = False
         self._end_ok = True
-        self._region_bad = False
+        self._region_bad = set()
         self._error = None
         self._reg_values = {}
         self._egg_candidates = []
@@ -282,6 +286,7 @@ class StreamCollector:
             combined_crc=self._combined_crc ^ 0xFFFFFFFF,
             valid=self._end_ok and not self._region_bad and self._error is None,
             error=self._error,
+            region_bad=set(self._region_bad),
         )
 
     def _named_registers(self) -> dict[str, int]:
