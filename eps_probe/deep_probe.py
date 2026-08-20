@@ -30,6 +30,7 @@ from __future__ import annotations
 from .fingerprints import (
     ADJUST_WORD,
     DCRA_MECHANISM,
+    EGG_ADDRESS,
     EGG_SIGNATURE,
     PATCH_FINGERPRINT,
     PATCH_POINT,
@@ -190,13 +191,17 @@ def verify_patch_fingerprint(
     the status degrades to ``NO_DATA`` (with a ``note``) instead of being
     compared.
 
-    Returns ``{"status": "MATCH|PATCHED|MISMATCH|NO_DATA", "candidates": [...]}``.
-    ``PATCHED`` means the window matches the verified firmware except at the
-    patch byte, which equals its patched value — the signature of a vehicle
-    already patched with the verified patch.  Each egg candidate carries its
-    own window comparison (window starts at ``candidate - 31``) recorded as
-    ``{"addr", "status"}`` — ``NO_DATA`` when no uploaded region covers that
-    window (e.g. a hit elsewhere in flash) or its covering region is bad.
+    Returns ``{"status": "MATCH|PATCHED|MISMATCH|NO_DATA", "candidates": [...],
+    "egg_found": bool, "egg_at_expected": bool}``.  ``PATCHED`` means the window
+    matches the verified firmware except at the patch byte, which equals its
+    patched value — the signature of a vehicle already patched with the verified
+    patch.  ``egg_found`` is whether any egg candidate was reported;
+    ``egg_at_expected`` is whether one sits at ``EGG_ADDRESS`` (0x8E6C6), i.e.
+    the patch point is where FW-PATCH expects it.  Each egg candidate carries
+    its own window comparison (window starts at ``candidate - 31``) recorded as
+    ``{"addr", "status", "at_expected"}`` — ``NO_DATA`` when no uploaded region
+    covers that window (e.g. a hit elsewhere in flash) or its covering region is
+    bad.
     """
     bad = set(region_bad or ())
     window = _read_range(regions, PATCH_FINGERPRINT["window_base"], 64)
@@ -220,9 +225,18 @@ def verify_patch_fingerprint(
             c_status = "NO_DATA"
         else:
             c_status = _window_status(c_window)
-        candidates.append({"addr": candidate, "status": c_status})
+        candidates.append({
+            "addr": candidate,
+            "status": c_status,
+            "at_expected": candidate == EGG_ADDRESS,
+        })
 
-    out = {"status": status, "candidates": candidates}
+    out = {
+        "status": status,
+        "candidates": candidates,
+        "egg_found": bool(candidates),
+        "egg_at_expected": any(candidate["at_expected"] for candidate in candidates),
+    }
     if note is not None:
         out["note"] = note
     return out
@@ -304,10 +318,13 @@ def classify_target(
     window matches except the patch byte, which equals its patched value) is
     ``already_patched`` regardless of the adjust-word state — the fingerprint
     itself proves the patch.  A MISMATCH needs the egg scan to have run
-    (``scan_egg``) before claiming ``no_egg``.
+    (``scan_egg``) before claiming ``no_egg``; when the egg exists but sits
+    somewhere other than ``EGG_ADDRESS``, ``egg_at_expected`` is False and the
+    caller reports a relocated patch point rather than one at FW-PATCH's spot.
     """
     f_status = fingerprint.get("status")
     egg_hits = len(fingerprint.get("candidates", []))
+    egg_at_expected = bool(fingerprint.get("egg_at_expected"))
     b_state = boot_integrity.get("state", "unknown")
     residue_ok = boot_integrity.get("residue_ok")
 
@@ -343,6 +360,7 @@ def classify_target(
         "fingerprint": f_status,
         "boot_integrity": b_state,
         "egg_hits": egg_hits,
+        "egg_at_expected": egg_at_expected,
         "sa_ok": bool(sa_ok),
         "envelope_ok": bool(envelope_ok),
         "stream_ok": bool(stream_ok),

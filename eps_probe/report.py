@@ -24,7 +24,7 @@ Layer result contracts consumed here (composed by the CLI):
 
 from __future__ import annotations
 
-from .fingerprints import ADJUST_WORD, REGISTER_READS
+from .fingerprints import ADJUST_WORD, EGG_ADDRESS, REGISTER_READS
 
 # Decision-tree guidance (Spec §8). Exactly one string per classification; the
 # enum strings come from ``deep_probe.classify_target``. Bilingual: 中文 (English).
@@ -39,9 +39,14 @@ _GUIDANCE: dict[str, str] = {
         "(This vehicle appears already patched; do not patch again)"
     ),
     "egg_variant": (
-        "存在 egg 但上下文不匹配，可能为变体或 patch 点重定位，需离线对照新指纹 "
-        "(Egg signature present but context differs; likely a variant or a "
-        "relocated patch point — compare against a new fingerprint offline)"
+        "egg 位于 FW-PATCH 位置 (0x8E6C6) 但上下文不匹配，可能是同位置变体 "
+        "(Egg at the FW-PATCH location but context differs; likely a variant at "
+        "the same patch point)"
+    ),
+    "egg_variant_relocated": (
+        "存在 egg 但地址与 FW-PATCH (0x8E6C6) 不同，patch 点可能重定位，需离线对照新指纹 "
+        "(Egg present but not at the FW-PATCH address; the patch point may be "
+        "relocated — compare against a new fingerprint offline)"
     ),
     "no_egg": (
         "未发现 egg 签名，patch 点位不同，需完整 dump + RE 重新定位 "
@@ -69,12 +74,20 @@ def guidance_from_classification(classification: dict | str) -> list[str]:
     """Map a ``classify_target`` conclusion to its next-step guidance text(s).
 
     Accepts either the full classification dict (Task 7 shape, key
-    ``classification``) or the bare enum string.  Unknown classifications yield
-    no guidance (``[]``) so ``build_report`` degrades gracefully.
+    ``classification``) or the bare enum string.  ``egg_variant`` splits on
+    ``egg_at_expected``: the egg at FW-PATCH's ``EGG_ADDRESS`` points to a
+    same-location variant, an egg elsewhere points to a relocated patch point.
+    Unknown classifications yield no guidance (``[]``) so ``build_report``
+    degrades gracefully.
     """
+    egg_at_expected = None
     if isinstance(classification, dict):
+        egg_at_expected = classification.get("egg_at_expected")
         classification = classification.get("classification")
-    text = _GUIDANCE.get(classification)
+    if classification == "egg_variant" and egg_at_expected is False:
+        text = _GUIDANCE["egg_variant_relocated"]
+    else:
+        text = _GUIDANCE.get(classification)
     return [] if text is None else [text]
 
 
@@ -283,11 +296,27 @@ def _markdown_layer3(layer3: dict) -> list[str]:
         status_line += f" ({fingerprint['note']})"
     out.append(status_line)
     candidates = fingerprint.get("candidates") or []
+    egg_found = bool(fingerprint.get("egg_found"))
+    egg_at_expected = bool(fingerprint.get("egg_at_expected"))
+    if egg_found:
+        if egg_at_expected:
+            out.append(
+                f"- egg 签名 (egg signature): 存在@0x{EGG_ADDRESS:X} "
+                "(present, matches FW-PATCH)"
+            )
+        else:
+            out.append(
+                "- egg 签名 (egg signature): 存在-地址不同 "
+                "(present, relocated from FW-PATCH)"
+            )
+    else:
+        out.append("- egg 签名 (egg signature): 未发现 (not found)")
     if candidates:
-        out.append(
-            "- egg 候选 (egg candidates): "
-            + ", ".join(f"0x{c.get('addr', 0):X}({c.get('status')})" for c in candidates)
-        )
+        rendered = []
+        for c in candidates:
+            marker = "与FW-PATCH一致" if c.get("at_expected") else "重定位"
+            rendered.append(f"0x{c.get('addr', 0):X}({c.get('status')},{marker})")
+        out.append("- egg 候选 (egg candidates): " + ", ".join(rendered))
     boot = layer3.get("boot_integrity") or {}
     adjust = boot.get("adjust_word")
     state = boot.get("state", "unknown")

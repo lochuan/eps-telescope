@@ -133,7 +133,7 @@ def test_replay_fingerprint_region_through_verify():
     region = sector[_REGION_OFF:_REGION_OFF + 0x100]
     regions = {_REGION_KEY: region}
     out = deep_probe.verify_patch_fingerprint(regions, egg_candidates=[])
-    assert out == {"status": "MATCH", "candidates": []}
+    assert out == {"status": "MATCH", "candidates": [], "egg_found": False, "egg_at_expected": False}
 
 
 def test_replay_window_stream_reassembles_and_matches():

@@ -18,9 +18,14 @@ _GUIDANCE = {
         "(This vehicle appears already patched; do not patch again)"
     ),
     "egg_variant": (
-        "存在 egg 但上下文不匹配，可能为变体或 patch 点重定位，需离线对照新指纹 "
-        "(Egg signature present but context differs; likely a variant or a "
-        "relocated patch point — compare against a new fingerprint offline)"
+        "egg 位于 FW-PATCH 位置 (0x8E6C6) 但上下文不匹配，可能是同位置变体 "
+        "(Egg at the FW-PATCH location but context differs; likely a variant at "
+        "the same patch point)"
+    ),
+    "egg_variant_relocated": (
+        "存在 egg 但地址与 FW-PATCH (0x8E6C6) 不同，patch 点可能重定位，需离线对照新指纹 "
+        "(Egg present but not at the FW-PATCH address; the patch point may be "
+        "relocated — compare against a new fingerprint offline)"
     ),
     "no_egg": (
         "未发现 egg 签名，patch 点位不同，需完整 dump + RE 重新定位 "
@@ -337,3 +342,18 @@ def test_build_report_vehicle_error():
 def test_build_report_no_vehicle_section_when_absent():
     md = report.build_report(_META, _LAYER1, _LAYER2)["markdown"]
     assert "## 车辆指纹" not in md
+
+
+def test_guidance_egg_variant_splits_on_egg_at_expected():
+    # Egg at FW-PATCH's address -> same-location variant text.
+    cls = {"classification": "egg_variant", "egg_at_expected": True}
+    assert report.guidance_from_classification(cls) == [_GUIDANCE["egg_variant"]]
+    # Egg elsewhere -> relocated text.
+    cls = {"classification": "egg_variant", "egg_at_expected": False}
+    assert report.guidance_from_classification(cls) == [
+        _GUIDANCE["egg_variant_relocated"]
+    ]
+    # Bare string (no address info) -> base text.
+    assert report.guidance_from_classification("egg_variant") == [
+        _GUIDANCE["egg_variant"]
+    ]

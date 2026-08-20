@@ -27,6 +27,11 @@ PATCH_FINGERPRINT: dict = {
 # Egg signature unique to the current firmware; the patch byte sits at egg+1.
 EGG_SIGNATURE: bytes = bytes.fromhex("e0d19a0d1a38bfff")
 
+# Egg start address in the FW-PATCH firmware (0x8E6C6). The patch byte is the
+# next byte, egg+1 == PATCH_POINT["addr"] (0x8E6C7). A candidate found at this
+# address means the patch point sits where FW-PATCH expects it.
+EGG_ADDRESS: int = 0x8E6C6
+
 # Scan range for the egg signature over the code flash.
 EGG_SCAN_START: int = 0x18000
 EGG_SCAN_END: int = 0xFFE00

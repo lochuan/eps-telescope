@@ -115,20 +115,22 @@ def test_verify_patch_fingerprint_candidate_context_match():
     candidate = PATCH_FINGERPRINT["window_base"] + 31  # egg start 0x8E6C6
     out = deep_probe.verify_patch_fingerprint(regions, [candidate])
     assert out["status"] == "MATCH"
-    assert out["candidates"] == [{"addr": candidate, "status": "MATCH"}]
+    assert out["candidates"] == [{"addr": candidate, "status": "MATCH", "at_expected": True}]
+    assert out["egg_found"] is True
+    assert out["egg_at_expected"] is True
 
 
 def test_verify_patch_fingerprint_candidate_context_no_data():
     out = deep_probe.verify_patch_fingerprint(
         _fingerprint_region(), [0x5A000]
     )
-    assert out["candidates"] == [{"addr": 0x5A000, "status": "NO_DATA"}]
+    assert out["candidates"] == [{"addr": 0x5A000, "status": "NO_DATA", "at_expected": False}]
 
 
 def test_verify_patch_fingerprint_candidate_context_mismatch():
     regions = {0x18000: bytes(range(64))}
     out = deep_probe.verify_patch_fingerprint(regions, [0x1801F])
-    assert out["candidates"] == [{"addr": 0x1801F, "status": "MISMATCH"}]
+    assert out["candidates"] == [{"addr": 0x1801F, "status": "MISMATCH", "at_expected": False}]
 
 
 # --- verify_boot_integrity ----------------------------------------------------
@@ -373,3 +375,52 @@ def test_default_regions_exact():
         (0x17D80, 0x40),
         (0xFEBF2CF8, 0x100),
     ]
+
+
+def test_verify_patch_fingerprint_egg_existence_and_address_match():
+    # No egg candidates -> egg_found False.
+    out = deep_probe.verify_patch_fingerprint(_fingerprint_region(), [])
+    assert out["egg_found"] is False
+    assert out["egg_at_expected"] is False
+    # Egg at the FW-PATCH address (0x8E6C6) -> egg_at_expected True.
+    expected = PATCH_FINGERPRINT["window_base"] + 31
+    out = deep_probe.verify_patch_fingerprint(_fingerprint_region(), [expected])
+    assert out["egg_found"] is True
+    assert out["egg_at_expected"] is True
+    # Egg elsewhere -> present but relocated.
+    out = deep_probe.verify_patch_fingerprint(_fingerprint_region(), [0x9A000])
+    assert out["egg_found"] is True
+    assert out["egg_at_expected"] is False
+    assert out["candidates"][0]["at_expected"] is False
+
+
+def _mismatched_fingerprint_region():
+    """Fingerprint region whose 64-byte window is corrupted (main status MISMATCH)."""
+    data = bytearray(_fingerprint_region()[0x8E6A0])
+    off = PATCH_FINGERPRINT["window_base"] - 0x8E6A0
+    data[off] ^= 0xFF
+    return {0x8E6A0: bytes(data)}
+
+
+def test_classify_target_egg_variant_relocated_when_egg_away_from_fw_patch():
+    fp = deep_probe.verify_patch_fingerprint(
+        _mismatched_fingerprint_region(), [0x9A000]
+    )
+    assert fp["status"] == "MISMATCH"
+    bi = deep_probe.verify_boot_integrity(_adjust_region(ADJUST_WORD["original"]))
+    out = deep_probe.classify_target(fp, bi, sa_ok=True, envelope_ok=True)
+    assert out["classification"] == "egg_variant"
+    assert out["egg_at_expected"] is False
+
+
+def test_classify_target_egg_variant_at_expected_when_egg_at_fw_patch():
+    fp = deep_probe.verify_patch_fingerprint(
+        _mismatched_fingerprint_region(),
+        [PATCH_FINGERPRINT["window_base"] + 31],
+    )
+    assert fp["status"] == "MISMATCH"
+    bi = deep_probe.verify_boot_integrity(_adjust_region(ADJUST_WORD["original"]))
+    out = deep_probe.classify_target(fp, bi, sa_ok=True, envelope_ok=True)
+    assert out["classification"] == "egg_variant"
+    assert out["egg_at_expected"] is True
+
