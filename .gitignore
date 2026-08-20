@@ -21,3 +21,13 @@ docs/
 # Brainstore intermediate artifacts
 .brainstore/
 brainstore/
+
+# Python tool caches
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+*.egg-info/
+dist/
+
+# v850 linker maps
+shellcode/build/*.map
